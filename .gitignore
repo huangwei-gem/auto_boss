@@ -17,6 +17,10 @@ build/
 # OS
 .DS_Store
 
+# Design skill test demos
+design_demos/
+_taste_ref/
+
 # QwenPaw runtime / internal directories (not user content)
 sessions/
 missions/
@@ -31,6 +35,9 @@ customized_skills/
 tool_result/
 tool_results/
 skills/
+
+# Session TODO files
+*_TODO.md
 
 # QwenPaw runtime files
 chats.json

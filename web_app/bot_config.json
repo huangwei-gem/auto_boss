@@ -1,0 +1,13 @@
+{
+  "city": "上海",
+  "job_query": "数据分析",
+  "scroll_pages": 5,
+  "message_interval_min": 3,
+  "message_interval_max": 8,
+  "greeting_message": "您好，我是双一流的本科，应聘数据分析岗位。在校系统学习数据分析相关知识，掌握Excel、基础SQL与数据整理技能，具备数据思维。做事严谨细心，学习能力强，愿意踏实积累。十分认可贵公司，希望能获得面试机会。",
+  "image_files": [
+    "数据分析看板/看板1.png",
+    "数据分析看板/看板2.png",
+    "数据分析看板/看板3.png"
+  ]
+}

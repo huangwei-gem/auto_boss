@@ -1,0 +1,4 @@
+﻿DrissionPage>=4.0.0
+Pillow>=10.0.0
+Flask>=3.0.0
+Flask-SocketIO>=5.3.0

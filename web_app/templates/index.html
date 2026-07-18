@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Boss 直聘 · 自动投递</title>
+<script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@200;300;400;500;600;700;800&family=Plus+Jakarta+Sans:wght@200;300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+:root {
+  --bg-deep: #050505;
+  --bg-card: rgba(255,255,255,0.04);
+  --bg-card-hover: rgba(255,255,255,0.07);
+  --bg-input: rgba(255,255,255,0.06);
+  --bg-input-focus: rgba(255,255,255,0.09);
+  --border-hair: rgba(255,255,255,0.08);
+  --border-hair-strong: rgba(255,255,255,0.15);
+  --text-primary: #F0F0F0;
+  --text-secondary: rgba(255,255,255,0.55);
+  --text-tertiary: rgba(255,255,255,0.32);
+  --accent-emerald: #34D399;
+  --accent-blue: #60A5FA;
+  --status-success: #34D399;
+  --status-error: #FB7185;
+  --status-warn: #FBBF24;
+  --status-idle: rgba(255,255,255,0.25);
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 20px;
+  --radius-xl: 28px;
+  --ease-premium: cubic-bezier(0.32, 0.72, 0, 1);
+}
+html { height: 100%; }
+body { background: var(--bg-deep); color: var(--text-primary); font-family: 'Geist', 'Plus Jakarta Sans', -apple-system, sans-serif; height: 100%; overflow: hidden; }
+body::after { content: ''; position: fixed; inset: 0; z-index: 50; pointer-events: none; background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.035'/%3E%3C/svg%3E"); }
+.ambient-orbs { position: fixed; inset: 0; z-index: -1; pointer-events: none; overflow: hidden; }
+.orb { position: absolute; border-radius: 50%; filter: blur(80px); opacity: 0.10; will-change: transform; }
+.orb-1 { width: 500px; height: 500px; background: radial-gradient(circle, #34D399, transparent); top: -20%; left: -15%; animation: orbFloat 30s ease-in-out infinite alternate; }
+.orb-2 { width: 400px; height: 400px; background: radial-gradient(circle, #60A5FA, transparent); bottom: -15%; right: -8%; animation: orbFloat 25s ease-in-out infinite alternate-reverse; }
+.orb-3 { width: 350px; height: 350px; background: radial-gradient(circle, #A78BFA, transparent); top: 60%; left: 70%; animation: orbFloat 35s ease-in-out infinite alternate; }
+@keyframes orbFloat { 0% { transform: translate(0, 0) scale(1); } 100% { transform: translate(60px, -40px) scale(1.1); } }
+.app { display: flex; height: 100dvh; position: relative; z-index: 1; }
+.left-panel { width: 420px; min-width: 380px; padding: 1rem; display: flex; flex-direction: column; gap: 0.75rem; border-right: 1px solid var(--border-hair); }
+.right-panel { flex: 1; display: flex; flex-direction: column; padding: 1rem; gap: 0.75rem; min-width: 0; }
+.glass { background: var(--bg-card); border: 1px solid var(--border-hair); border-radius: var(--radius-lg); padding: 1.25rem; box-shadow: inset 0 1px 0 rgba(255,255,255,0.06); backdrop-filter: blur(12px); }
+.scroll-area { flex: 1; overflow-y: auto; scrollbar-width: thin; scrollbar-color: rgba(255,255,255,0.08) transparent; }
+.scroll-area::-webkit-scrollbar { width: 4px; }
+.scroll-area::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 4px; }
+.section-label { font-size: 0.6rem; text-transform: uppercase; letter-spacing: 0.15em; color: var(--text-tertiary); margin-bottom: 0.5rem; font-weight: 500; }
+.form-group { margin-bottom: 0.75rem; }
+.form-group label { display: block; font-size: 0.75rem; font-weight: 400; color: var(--text-secondary); margin-bottom: 0.35rem; letter-spacing: 0.01em; }
+.form-input, .form-select, .form-textarea { width: 100%; background: var(--bg-input); border: 1px solid var(--border-hair); border-radius: var(--radius-sm); padding: 0.55rem 0.75rem; color: var(--text-primary); font-family: 'Geist', sans-serif; font-size: 0.8rem; outline: none; transition: all 0.3s var(--ease-premium); }
+.form-input:focus, .form-select:focus, .form-textarea:focus { background: var(--bg-input-focus); border-color: var(--border-hair-strong); }
+.form-input::placeholder, .form-textarea::placeholder { color: var(--text-tertiary); }
+.form-textarea { resize: vertical; min-height: 60px; line-height: 1.6; }
+.row { display: flex; gap: 0.75rem; }
+.row > * { flex: 1; min-width: 0; }
+.eyebrow { display: inline-flex; align-items: center; gap: 0.4rem; border-radius: 9999px; padding: 0.15rem 0.6rem; font-size: 0.6rem; text-transform: uppercase; letter-spacing: 0.12em; font-weight: 500; background: rgba(255,255,255,0.05); border: 1px solid var(--border-hair); color: var(--text-secondary); }
+.status-bar { display: flex; align-items: center; justify-content: space-between; padding: 0.6rem 1rem; background: var(--bg-card); border: 1px solid var(--border-hair); border-radius: var(--radius-md); }
+.status-left { display: flex; align-items: center; gap: 0.75rem; }
+.status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--status-idle); transition: background 0.4s var(--ease-premium); }
+.status-dot.running { background: var(--status-success); box-shadow: 0 0 8px rgba(52,211,153,0.4); }
+.status-dot.error { background: var(--status-error); box-shadow: 0 0 8px rgba(251,113,133,0.4); }
+.status-text { font-size: 0.8rem; color: var(--text-secondary); font-weight: 400; }
+.stats { display: flex; gap: 1.5rem; }
+.stat-item { text-align: center; }
+.stat-value { font-size: 1.25rem; font-weight: 600; letter-spacing: -0.02em; line-height: 1.2; }
+.stat-label { font-size: 0.6rem; color: var(--text-tertiary); text-transform: uppercase; letter-spacing: 0.1em; }
+.screenshot-box { flex: 1; background: var(--bg-card); border: 1px solid var(--border-hair); border-radius: var(--radius-lg); overflow: hidden; display: flex; align-items: center; justify-content: center; min-height: 0; position: relative; }
+.screenshot-box img { max-width: 100%; max-height: 100%; object-fit: contain; display: block; }
+.screenshot-placeholder { color: var(--text-tertiary); font-size: 0.85rem; font-weight: 300; text-align: center; padding: 1rem; }
+.screenshot-placeholder .icon { font-size: 2.5rem; margin-bottom: 0.75rem; opacity: 0.3; display: block; }
+.log-area { height: 180px; min-height: 120px; overflow-y: auto; font-family: 'JetBrains Mono', monospace; font-size: 0.7rem; line-height: 1.7; padding: 0.75rem; scrollbar-width: thin; scrollbar-color: rgba(255,255,255,0.08) transparent; }
+.log-area::-webkit-scrollbar { width: 4px; }
+.log-area::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 4px; }
+.log-entry { opacity: 0; animation: logFade 0.25s var(--ease-premium) forwards; }
+@keyframes logFade { to { opacity: 1; } }
+.log-time { color: var(--text-tertiary); margin-right: 0.5rem; }
+.log-INFO { color: var(--text-secondary); }
+.log-SUCCESS { color: var(--status-success); }
+.log-ERROR { color: var(--status-error); }
+.log-WARN { color: var(--status-warn); }
+.log-LOGIN { color: var(--accent-blue); }
+.log-SYSTEM { color: var(--text-tertiary); font-style: italic; }
+.btn-group { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+.btn { display: inline-flex; align-items: center; gap: 0.5rem; padding: 0.5rem 1rem; border-radius: 9999px; font-family: 'Geist', sans-serif; font-size: 0.8rem; font-weight: 500; border: 1px solid var(--border-hair); background: var(--bg-card); color: var(--text-secondary); cursor: pointer; transition: all 0.35s var(--ease-premium); text-decoration: none; white-space: nowrap; }
+.btn:hover { background: var(--bg-card-hover); border-color: var(--border-hair-strong); color: var(--text-primary); transform: translateY(-1px); }
+.btn:active { transform: scale(0.97); }
+.btn-primary { background: rgba(52,211,153,0.12); border-color: rgba(52,211,153,0.25); color: var(--accent-emerald); }
+.btn-primary:hover { background: rgba(52,211,153,0.2); border-color: rgba(52,211,153,0.4); }
+.btn-danger { background: rgba(251,113,133,0.1); border-color: rgba(251,113,133,0.2); color: var(--status-error); }
+.btn-danger:hover { background: rgba(251,113,133,0.18); border-color: rgba(251,113,133,0.35); }
+.btn:disabled { opacity: 0.3; cursor: not-allowed; transform: none !important; }
+.btn-icon { width: 1.5rem; height: 1.5rem; border-radius: 9999px; background: rgba(255,255,255,0.06); display: inline-flex; align-items: center; justify-content: center; font-size: 0.7rem; transition: transform 0.35s var(--ease-premium); }
+.btn:hover .btn-icon { transform: translate(2px, -1px); }
+.chip-group { display: flex; flex-wrap: wrap; gap: 0.35rem; }
+.chip { display: inline-flex; align-items: center; gap: 0.35rem; border-radius: 9999px; padding: 0.2rem 0.6rem; font-size: 0.65rem; background: var(--bg-input); border: 1px solid var(--border-hair); color: var(--text-secondary); }
+.chip-remove { cursor: pointer; opacity: 0.3; transition: opacity 0.2s; font-size: 0.7rem; line-height: 1; }
+.chip-remove:hover { opacity: 1; color: var(--status-error); }
+@media (max-width: 900px) { .app { flex-direction: column; } .left-panel { width: 100%; min-width: unset; max-height: 50dvh; border-right: none; border-bottom: 1px solid var(--border-hair); } .log-area { height: 100px; } }
+</style>
+</head>
+<body>
+<div class="ambient-orbs"><div class="orb orb-1"></div><div class="orb orb-2"></div><div class="orb orb-3"></div></div>
+
+<div class="app">
+
+  <!-- ══ LEFT ══ -->
+  <div class="left-panel">
+    <div style="display:flex;align-items:center;justify-content:space-between;">
+      <span style="font-weight:600;font-size:0.9rem;letter-spacing:-0.02em;">Boss 直聘 · 自动投递</span>
+      <span class="eyebrow">⚙ Config</span>
+    </div>
+    <div class="scroll-area glass" style="flex:1;">
+      <div class="section-label" style="margin-top:0.25rem;">Search</div>
+      <div class="form-group">
+        <label>城市</label>
+        <select id="city" class="form-select">
+          <option>上海</option><option>北京</option><option>深圳</option><option>广州</option>
+          <option>杭州</option><option>成都</option><option>武汉</option><option>南京</option>
+          <option>西安</option><option>苏州</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>岗位关键词 (每行一个)</label>
+        <textarea id="jobs" class="form-textarea" rows="2" placeholder="数据分析"></textarea>
+      </div>
+      <div class="row">
+        <div class="form-group"><label>滚动页数</label><input id="scrollPages" class="form-input" type="number" min="1" value="5"></div>
+        <div class="form-group">
+          <label>间隔 (秒)</label>
+          <div class="row" style="gap:0.35rem;">
+            <input id="intervalMin" class="form-input" type="number" min="1" value="3">
+            <span style="color:var(--text-tertiary);line-height:2;">—</span>
+            <input id="intervalMax" class="form-input" type="number" min="1" value="8">
+          </div>
+        </div>
+      </div>
+      <div class="section-label" style="margin-top:0.5rem;">Message</div>
+      <div class="form-group"><label>打招呼语</label><textarea id="greeting" class="form-textarea" rows="4"></textarea></div>
+      <div class="section-label" style="margin-top:0.5rem;">Attachments</div>
+      <div class="form-group">
+        <label>图片附件</label>
+        <div id="imageChips" class="chip-group" style="margin-bottom:0.35rem;"></div>
+        <div style="display:flex;gap:0.35rem;">
+          <select id="imageSelector" class="form-select" style="flex:1;font-size:0.65rem;"><option value="">— 选择添加 —</option></select>
+          <button class="btn" onclick="addSelectedImage()" style="padding:0.35rem 0.6rem;font-size:0.65rem;">+</button>
+        </div>
+      </div>
+    </div>
+    <div class="btn-group">
+      <button class="btn btn-primary" onclick="saveConfig()"><span class="btn-icon">✓</span> 保存配置</button>
+      <button id="btnReset" class="btn" onclick="onResetClick()" style="color:var(--text-tertiary);">重置</button>
+      <button id="btnResetConfirm" class="btn btn-danger" onclick="resetConfig()" style="display:none;"><span class="btn-icon">!</span> 确认重置？</button>
+    </div>
+  </div>
+
+  <!-- ══ RIGHT ══ -->
+  <div class="right-panel">
+    <div class="status-bar">
+      <div class="status-left"><span id="statusDot" class="status-dot"></span><span id="statusText" class="status-text">就绪</span></div>
+      <div class="stats">
+        <div class="stat-item"><div id="statTotal" class="stat-value" style="color:var(--text-secondary);">0</div><div class="stat-label">浏览</div></div>
+        <div class="stat-item"><div id="statApplied" class="stat-value" style="color:var(--accent-emerald);">0</div><div class="stat-label">已投</div></div>
+        <div class="stat-item"><div id="statSkipped" class="stat-value" style="color:var(--status-warn);">0</div><div class="stat-label">跳过</div></div>
+      </div>
+    </div>
+    <div class="screenshot-box">
+      <img id="screenshotImg" src="" alt="browser preview" style="display:none;">
+      <div id="screenshotPlaceholder" class="screenshot-placeholder"><span class="icon">◇</span>浏览器实时预览</div>
+    </div>
+    <div class="btn-group">
+      <button id="btnStart" class="btn btn-primary" onclick="startBot()"><span class="btn-icon">▶</span> 开始投递</button>
+      <button id="btnStop" class="btn btn-danger" onclick="stopBot()" disabled><span class="btn-icon">■</span> 停止</button>
+      <button id="btnConfirmLogin" class="btn" onclick="confirmLogin()" disabled><span class="btn-icon">✓</span> 确认已登录</button>
+      <button id="btnCheckLogin" class="btn" onclick="checkLogin()" disabled><span class="btn-icon">↻</span> 检查登录</button>
+    </div>
+    <div class="glass" style="flex-shrink:0;">
+      <div class="section-label" style="margin-bottom:0.25rem;">Console</div>
+      <div id="logArea" class="log-area"><div class="log-entry"><span class="log-time">▶</span><span class="log-SYSTEM">Web 界面就绪...</span></div></div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+const socket = io();
+let stats = { total: 0, applied: 0, skipped: 0 };
+let imageFiles = [];
+let availableImages = [];
+let _starting = false;
+
+async function loadConfig() {
+  try {
+    const res = await fetch('/api/config');
+    const cfg = await res.json();
+    document.getElementById('city').value = cfg.city || '上海';
+    document.getElementById('jobs').value = (cfg.job_query || '').replace(/,/g, '\n');
+    document.getElementById('scrollPages').value = cfg.scroll_pages || 5;
+    document.getElementById('intervalMin').value = cfg.message_interval_min || 3;
+    document.getElementById('intervalMax').value = cfg.message_interval_max || 8;
+    document.getElementById('greeting').value = cfg.greeting_message || '';
+    imageFiles = cfg.image_files || [];
+    renderImageChips();
+  } catch (e) { addLog('ERROR', '配置加载失败: ' + e.message); }
+}
+
+async function loadImages() {
+  try {
+    const res = await fetch('/api/images');
+    availableImages = await res.json();
+    const sel = document.getElementById('imageSelector');
+    sel.innerHTML = '<option value="">— 选择添加 —</option>' +
+      availableImages.map(f => `<option value="${f}">${f}</option>`).join('');
+  } catch (e) {}
+}
+
+function renderImageChips() {
+  const c = document.getElementById('imageChips');
+  if (!imageFiles.length) { c.innerHTML = '<span style="color:var(--text-tertiary);font-size:0.7rem;">未选择图片</span>'; return; }
+  c.innerHTML = imageFiles.map(f => `<span class="chip">${escHtml(f)}<span class="chip-remove" onclick="removeImage(${JSON.stringify(f)})">✕</span></span>`).join('');
+}
+function removeImage(name) { imageFiles = imageFiles.filter(f => f !== name); renderImageChips(); }
+function addSelectedImage() {
+  const sel = document.getElementById('imageSelector');
+  const name = sel.value;
+  if (name && !imageFiles.includes(name)) { imageFiles.push(name); renderImageChips(); sel.value = ''; }
+}
+
+function onResetClick() {
+  document.getElementById('btnReset').style.display = 'none';
+  document.getElementById('btnResetConfirm').style.display = '';
+}
+function cancelReset() {
+  document.getElementById('btnReset').style.display = '';
+  document.getElementById('btnResetConfirm').style.display = 'none';
+}
+
+async function saveConfig() {
+  const cfg = {
+    city: document.getElementById('city').value,
+    job_query: document.getElementById('jobs').value.split('\n').map(s=>s.trim()).filter(Boolean).join(','),
+    scroll_pages: parseInt(document.getElementById('scrollPages').value) || 5,
+    message_interval_min: parseInt(document.getElementById('intervalMin').value) || 3,
+    message_interval_max: parseInt(document.getElementById('intervalMax').value) || 8,
+    greeting_message: document.getElementById('greeting').value,
+    image_files: imageFiles,
+  };
+  try {
+    const res = await fetch('/api/config', { method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify(cfg) });
+    const data = await res.json();
+    if (data.status === 'ok') addLog('SYSTEM', '配置已保存');
+    else addLog('ERROR', '配置保存失败: ' + (data.errors||[]).join(', '));
+  } catch(e) { addLog('ERROR', '保存异常: ' + e.message); }
+  cancelReset();
+}
+
+async function resetConfig() {
+  try {
+    await fetch('/api/config', { method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify({
+      city:'上海', job_query:'数据分析', scroll_pages:5,
+      message_interval_min:3, message_interval_max:8,
+      greeting_message:'您好，我是双一流的本科，应聘数据分析岗位。在校系统学习数据分析相关知识，掌握Excel、基础SQL与数据整理技能，具备数据思维。做事严谨细心，学习能力强，愿意踏实积累。十分认可贵公司，希望能获得面试机会。',
+      image_files:['数据分析看板/看板1.png','数据分析看板/看板2.png','数据分析看板/看板3.png']
+    })});
+    await loadConfig();
+    addLog('INFO', '配置已重置');
+  } catch(e) { addLog('ERROR', '重置失败'); }
+  cancelReset();
+}
+
+function startBot() {
+  if (_starting) return;
+  _starting = true;
+  const cfg = {
+    city: document.getElementById('city').value,
+    job_query: document.getElementById('jobs').value.split('\n').map(s=>s.trim()).filter(Boolean).join(','),
+    scroll_pages: parseInt(document.getElementById('scrollPages').value) || 5,
+    message_interval_min: parseInt(document.getElementById('intervalMin').value) || 3,
+    message_interval_max: parseInt(document.getElementById('intervalMax').value) || 8,
+    greeting_message: document.getElementById('greeting').value,
+    image_files: imageFiles,
+  };
+  setControls(true);
+  stats = { total:0, applied:0, skipped:0 };
+  updateStats();
+  socket.emit('start_bot', cfg);
+  addLog('SYSTEM', '启动指令已发送...');
+  setTimeout(() => _starting = false, 2000);
+}
+
+function stopBot() {
+  if (confirm('确定停止 Bot？')) {
+    socket.emit('stop_bot');
+    addLog('SYSTEM', '停止指令已发送...');
+  }
+}
+
+function confirmLogin() { socket.emit('confirm_login'); }
+function checkLogin() { socket.emit('check_login'); }
+
+function setControls(r) {
+  document.getElementById('btnStart').disabled = r;
+  document.getElementById('btnStop').disabled = !r;
+  document.getElementById('btnConfirmLogin').disabled = !r;
+  document.getElementById('btnCheckLogin').disabled = !r;
+  const dot = document.getElementById('statusDot');
+  document.getElementById('statusText').textContent = r ? '运行中' : '就绪';
+  dot.className = 'status-dot' + (r ? ' running' : '');
+}
+
+function updateStats() {
+  document.getElementById('statTotal').textContent = stats.total;
+  document.getElementById('statApplied').textContent = stats.applied;
+  document.getElementById('statSkipped').textContent = stats.skipped;
+}
+
+function escHtml(t) { const d=document.createElement('div'); d.textContent=t; return d.innerHTML; }
+
+function addLog(level, message) {
+  const area = document.getElementById('logArea');
+  const div = document.createElement('div');
+  div.className = 'log-entry';
+  const t = new Date().toLocaleTimeString();
+  div.innerHTML = `<span class="log-time">${t}</span><span class="log-${level}">${escHtml(message)}</span>`;
+  area.appendChild(div);
+  area.scrollTop = area.scrollHeight;
+  while (area.children.length > 300) area.removeChild(area.firstChild);
+}
+
+// SocketIO
+socket.on('connect', () => addLog('SYSTEM', 'WebSocket 已连接'));
+socket.on('disconnect', () => { addLog('ERROR','WebSocket 断开'); setControls(false); });
+socket.on('bot_status', d => { setControls(d.running); if(!d.running) addLog('SYSTEM','Bot 已停止'); });
+socket.on('bot_log', d => {
+  const m = d.message || '';
+  let level = 'INFO';
+  if (m.startsWith('[ERROR]')) level='ERROR';
+  else if (m.startsWith('[WARN]')) level='WARN';
+  else if (m.startsWith('[SUCCESS]')) level='SUCCESS';
+  else if (m.startsWith('[LOGIN]')) level='LOGIN';
+  else if (m.startsWith('[SYSTEM]')) level='SYSTEM';
+  addLog(level, m.replace(/^\[(ERROR|WARN|SUCCESS|LOGIN|SYSTEM|INFO)\]\s*/,''));
+});
+socket.on('bot_screenshot', d => {
+  document.getElementById('screenshotImg').src = 'data:image/png;base64,' + d.image;
+  document.getElementById('screenshotImg').style.display = 'block';
+  document.getElementById('screenshotPlaceholder').style.display = 'none';
+});
+socket.on('bot_progress', d => {
+  stats.total = d.total || 0; stats.applied = d.applied || 0; stats.skipped = d.skipped || 0;
+  updateStats();
+});
+socket.on('bot_login_status', d => {
+  addLog(d.logged_in ? 'SUCCESS' : 'WARN', d.logged_in ? '已登录' : '未检测到登录状态');
+});
+
+loadConfig();
+loadImages();
+</script>
+</body>
+</html>
