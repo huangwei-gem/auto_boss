@@ -148,7 +148,10 @@ body::after{content:'';position:fixed;inset:0;z-index:50;pointer-events:none;bac
       <div id="jobList"></div>
       <button class="btn btn-sm" onclick="addJob()" style="width:100%;margin-bottom:.75rem;justify-content:center;">+ 添加岗位</button>
 
-      <div class="section-label">图片附件</div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin:.5rem 0 .35rem;">
+        <div class="section-label" style="margin:0;">图片附件</div>
+        <button class="btn btn-sm" onclick="deleteAccount(activeAccountIdx)" style="font-size:.6rem;color:var(--status-error);padding:.2rem .5rem;">删除此账号</button>
+      </div>
       <div class="form-group">
         <div id="imageChips" class="chip-group" style="margin-bottom:.35rem;"></div>
         <div style="display:flex;gap:.35rem;">
@@ -491,4 +494,46 @@ function addLog(level, message) {
 // ═══ SocketIO ═══
 
 socket.on('connect', () => addLog('SYSTEM', 'WebSocket 已连接'));
-socket.on('disconnect', () => { addLog('ERROR','WebSocket 断开
+socket.on('disconnect', () => { addLog('ERROR','WebSocket 断开'); });
+socket.on('bot_log', (data) => { addLog('INFO', data.message); });
+socket.on('bot_progress', (data) => {
+  if (data.total !== undefined) stats.total = data.total;
+  if (data.applied !== undefined) stats.applied = data.applied;
+  if (data.skipped !== undefined) stats.skipped = data.skipped;
+  updateStats();
+});
+socket.on('bot_screenshot', (data) => {
+  const img = document.getElementById('screenshotImg');
+  const plc = document.getElementById('screenshotPlaceholder');
+  img.src = 'data:image/png;base64,' + data.image;
+  img.style.display = 'block';
+  plc.style.display = 'none';
+  document.getElementById('currentTaskLabel').textContent = data.label || '';
+});
+socket.on('bot_status', (data) => {
+  setControls(data.running);
+  if (!data.running) {
+    document.getElementById('currentTaskLabel').textContent = '';
+  }
+});
+socket.on('scheduler_status', (data) => {
+  setControls(data.running);
+  if (data.current) {
+    document.getElementById('currentTaskLabel').textContent =
+      data.current.account + ' / ' + data.current.query + '(' + data.current.city + ')';
+  } else if (!data.running) {
+    document.getElementById('currentTaskLabel').textContent = '';
+  }
+});
+socket.on('bot_login', () => {
+  document.getElementById('btnConfirmLogin').disabled = false;
+});
+socket.on('login_result', (data) => {
+  if (data.success) addLog('SUCCESS', '登录状态正常');
+  else addLog('ERROR', '未登录');
+});
+
+loadConfig();
+</script>
+</body>
+</html>
