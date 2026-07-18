@@ -74,6 +74,17 @@ class TaskScheduler:
     def log(self, msg: str):
         socketio.emit("bot_log", {"message": msg}, to=self.sid)
 
+    def confirm_login(self) -> None:
+        """代理到当前 BotRunner 的 BotCore.confirm_login()"""
+        if self._current_runner and self._current_runner.bot:
+            self._current_runner.bot.confirm_login()
+
+    def check_login_status(self) -> bool:
+        """代理到当前 BotRunner 的 BotCore.check_login_status()"""
+        if self._current_runner and self._current_runner.bot:
+            return self._current_runner.bot.check_login_status()
+        return False
+
     def stop(self):
         self._stop.set()
         if self._current_runner:
@@ -197,6 +208,17 @@ class BotRunner:
             self.log_cb(f"[SYSTEM] Bot 异常退出: {e}")
         finally:
             self.bot = None
+
+    def confirm_login(self) -> None:
+        """代理到 BotCore.confirm_login()"""
+        if self.bot:
+            self.bot.confirm_login()
+
+    def check_login_status(self) -> bool:
+        """代理到 BotCore.check_login_status()"""
+        if self.bot:
+            return self.bot.check_login_status()
+        return False
 
     def stop(self):
         if self.bot:
@@ -334,7 +356,7 @@ def on_disconnect():
 
 
 @socketio.on("start_all")
-def on_start_all(data):
+def on_start_all(data=None):
     """启动所有启用的账号×岗位任务。"""
     global _scheduler_thread, _scheduler_stop, _bot
 
@@ -353,6 +375,7 @@ def on_start_all(data):
 
     _scheduler_stop.clear()
     scheduler = TaskScheduler(tasks, request.sid)
+    _bot = scheduler  # 使 confirm_login / check_login 能到达当前 BotCore
 
     def _run_scheduler():
         scheduler.run()
