@@ -37,8 +37,18 @@ pip install -r requirements.txt
 
 ## 使用方法
 
+### 快速启动（推荐）
+
 ```bash
-# 启动应用
+# 直接双击 start.cmd
+start.cmd
+```
+
+或者手动运行：
+
+```bash
+# 激活虚拟环境后启动
+.venv\Scripts\activate
 python main.py
 ```
 
