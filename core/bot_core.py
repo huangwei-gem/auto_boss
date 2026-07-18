@@ -326,17 +326,47 @@ class BotCore:
     @retry(max_attempts=2, base_delay=2.0)
     def _step_fetch_cities(self) -> None:
         self._log("INFO", "刷新页面获取城市数据...")
+        city_dict = {}
+
+        # 关键：必须先在 refresh 前开始监听，否则 data/city.json 的请求已发出，
+        # listen.steps() 将永远等不到匹配的包而卡死
+        self.dp.listen.start("data/city.json")
         self.dp.refresh()
         self._random_delay(2, 3)
 
-        city_dict = {}
-        self.dp.listen.start("data/city.json")
-        for packet in self.dp.listen.steps():
+        # 用 wait() 代替 steps() — 支持超时，防止无限阻塞
+        packet = self.dp.listen.wait(timeout=15)
+        if packet is None:
+            self._log("WARN", "获取城市数据超时，尝试备用方案...")
+            # 备用：从页面 DOM 中提取热门城市列表
+            city_eles = self.dp.eles(".city-list .city-item", timeout=5)
+            if city_eles:
+                for ele in city_eles:
+                    name = ele.text.strip()
+                    code = ele.attr("data-code")
+                    if name and code:
+                        city_dict[name] = code
+                self._log("INFO", f"从 DOM 提取了 {len(city_dict)} 个城市")
+            else:
+                # 降级方案：直接尝试硬编码的热门城市 code
+                self._log("INFO", "降级方案：使用内置热门城市列表")
+                city_dict = {
+                    "北京": "101010100",
+                    "上海": "101020100",
+                    "广州": "101280101",
+                    "深圳": "101280601",
+                    "杭州": "101210101",
+                    "成都": "101270101",
+                    "武汉": "101200101",
+                    "南京": "101190101",
+                    "西安": "101110101",
+                    "苏州": "101190401",
+                }
+        else:
             res = packet.response.body
             city_list = res.get("zpData", {}).get("hotCityList", [])
             for city in city_list:
                 city_dict[city["name"]] = city["code"]
-            break
         self.dp.listen.stop()
 
         self._log("INFO", f"已获取 {len(city_dict)} 个城市数据")
