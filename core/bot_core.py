@@ -38,7 +38,9 @@ USER_AGENTS = [
 
 # CSS 选择器常量
 SELECTOR_NAV = ".user-nav"
-SELECTOR_START_CHAT = ".btn.btn-startchat"
+SELECTOR_START_CHAT = ".btn.btn-startchat"  # 旧版选择器（保留兼容）
+SELECTOR_START_CHAT_TEXT = "立即沟通"       # 按文本找
+SELECTOR_START_CHAT_CONTINUE = "继续沟通"   # 之前沟通过的提示
 SELECTOR_INPUT_AREA = ".input-area"
 SELECTOR_SEND_BTN = ".send-message"
 SELECTOR_CLOSE = ".icon-close"
@@ -530,17 +532,11 @@ class BotCore:
     ) -> bool:
         """投递单个岗位，成功返回 True。"""
         self.dp.get(url)
-        self._random_delay(2, 3)
+        self._random_delay(3, 5)
 
-        # 检查是否之前沟通过（页面级别）
-        btn = self.dp.ele(SELECTOR_START_CHAT, timeout=3)
-        if btn and "继续沟通" in btn.text:
-            self._log("INFO", "  → 之前已沟通过，跳过")
-            return False
-
-        # 提取活跃度/规模信息
+        # 提取活跃度/规模信息（先做，页面刚加载时有这些信息）
         try:
-            boss_time = self.dp.ele(SELECTOR_BOSS_ACTIVE, timeout=3).text
+            boss_time = self.dp.ele(SELECTOR_BOSS_ACTIVE, timeout=5).text
             scale = self.dp.ele(SELECTOR_SCALE, timeout=3).text
             self._log("INFO", f"  活跃度: {boss_time}, 规模: {scale}")
         except Exception:
@@ -548,11 +544,42 @@ class BotCore:
 
         greeting = self.config.get("greeting_message", "")
 
-        # 点击沟通按钮
+        # ── 查找沟通按钮（多策略兜底） ──
+        chat_btn = None
+
+        # 策略1: 旧版 class 选择器
         chat_btn = self.dp.ele(SELECTOR_START_CHAT, timeout=3)
+        if chat_btn:
+            # 检查是否之前沟通过
+            if SELECTOR_START_CHAT_CONTINUE in chat_btn.text:
+                self._log("INFO", "  → 之前已沟通过，跳过")
+                return False
+        else:
+            # 策略2: 按文本找"立即沟通"按钮（xpath）
+            chat_btn = self.dp.ele(
+                f'xpath://button[contains(text(), "{SELECTOR_START_CHAT_TEXT}")]',
+                timeout=5,
+            )
+
+        if not chat_btn:
+            # 策略3: 按文本找"继续沟通"（之前沟通过）
+            chat_btn = self.dp.ele(
+                f'xpath://*[contains(text(), "{SELECTOR_START_CHAT_CONTINUE}")]',
+                timeout=3,
+            )
+            if chat_btn:
+                self._log("INFO", "  → 之前已沟通过，跳过")
+                return False
+
+        if not chat_btn:
+            # 策略4: 找任何 class 含 chat/communicate 的按钮
+            chat_btn = self.dp.ele("xpath://button[contains(@class, 'chat') or contains(@class, 'talk')]", timeout=3)
+
         if not chat_btn:
             self._log("WARN", "  → 未找到沟通按钮")
             return False
+
+        self._log("INFO", f"  → 找到沟通按钮: {chat_btn.text[:20] if chat_btn.text else '无文字'}")
         chat_btn.click()
         self._random_delay(1, 2)
 
