@@ -5,9 +5,9 @@
       "enabled": true,
       "cookie_file": "zhipin_cookies.json",
       "image_files": [
-        "数据分析看板/看板1.png",
-        "数据分析看板/看板2.png",
-        "数据分析看板/看板3.png"
+        "dashboard/看板1.png",
+        "dashboard/看板2.png",
+        "dashboard/看板3.png"
       ],
       "message_interval_min": 3,
       "message_interval_max": 8,

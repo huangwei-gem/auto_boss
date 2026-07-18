@@ -14,7 +14,7 @@ import time
 from typing import Callable, Optional
 
 # 使 bot_core 可导入
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "boss自动投简历"))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "core"))
 
 from bot_core import BotCore
 
