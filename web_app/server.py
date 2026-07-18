@@ -63,36 +63,40 @@ logger = logging.getLogger("boss-web")
 # ═══════════════════════════════════════════════════════════
 
 class TaskScheduler:
-    """依次执行 flatten_jobs 中的任务，每个任务独享一个 BotCore。"""
+    """并发执行所有任务，每个任务独享一个 BotCore（独立浏览器实例）。"""
 
     def __init__(self, tasks: list[dict], sid: str):
         self.tasks = tasks
         self.sid = sid
         self._stop = threading.Event()
-        self._current_runner: BotRunner | None = None
+        self._runners: list[BotRunner] = []
+        self._threads: list[threading.Thread] = []
 
     def log(self, msg: str):
         socketio.emit("bot_log", {"message": msg}, to=self.sid)
 
     def confirm_login(self) -> None:
-        """代理到当前 BotRunner 的 BotCore.confirm_login()"""
-        if self._current_runner and self._current_runner.bot:
-            self._current_runner.bot.confirm_login()
+        """将所有 runner 的 confirm_login 代理到前台。"""
+        for runner in self._runners:
+            if runner and runner.bot:
+                runner.bot.confirm_login()
 
     def check_login_status(self) -> bool:
-        """代理到当前 BotRunner 的 BotCore.check_login_status()"""
-        if self._current_runner and self._current_runner.bot:
-            return self._current_runner.bot.check_login_status()
+        """检查任一 runner 的登录状态。"""
+        for runner in self._runners:
+            if runner and runner.bot and runner.bot.check_login_status():
+                return True
         return False
 
     def stop(self):
         self._stop.set()
-        if self._current_runner:
-            self._current_runner.stop()
+        for runner in self._runners:
+            runner.stop()
 
     def run(self):
         total = len(self.tasks)
-        completed = 0
+        self.log(f"[SCHEDULER] 并发启动 {total} 个任务...")
+
         socketio.emit("scheduler_status", {
             "running": True,
             "total": total,
@@ -100,31 +104,13 @@ class TaskScheduler:
             "current": None,
         }, to=self.sid)
 
+        # 并发启动所有任务
         for idx, task in enumerate(self.tasks):
             if self._stop.is_set():
-                self.log(f"[SCHEDULER] 用户停止调度器")
                 break
 
-            global _current_task
-            _current_task = task
-
             label = f"{task['account_name']} / {task['query']}({task['city']})"
-            self.log(f"\n{'='*50}")
-            self.log(f"[SCHEDULER] 任务 {idx+1}/{total}: {label}")
-            self.log(f"{'='*50}")
 
-            socketio.emit("scheduler_status", {
-                "running": True,
-                "total": total,
-                "completed": completed,
-                "current": {
-                    "account": task["account_name"],
-                    "query": task["query"],
-                    "city": task["city"],
-                },
-            }, to=self.sid)
-
-            # 构建 BotCore 配置
             bot_config = {
                 "city": task["city"],
                 "job_query": task["query"],
@@ -136,28 +122,20 @@ class TaskScheduler:
             }
 
             runner = BotRunner(bot_config, self.sid, label)
-            self._current_runner = runner
+            self._runners.append(runner)
 
-            runner.run()
+            t = threading.Thread(target=runner.run, daemon=True)
+            self._threads.append(t)
+            t.start()
 
-            if self._stop.is_set():
-                break
+            self.log(f"[SCHEDULER] ✓ 已启动 [{idx+1}/{total}] {label}")
 
-            completed += 1
-            socketio.emit("scheduler_status", {
-                "running": True,
-                "total": total,
-                "completed": completed,
-                "current": None,
-            }, to=self.sid)
+        # 等待所有线程完成
+        for t in self._threads:
+            t.join()
 
-            # 任务间间隔（防 IP 限流）
-            if idx < total - 1 and not self._stop.is_set():
-                gap = 15
-                self.log(f"[SCHEDULER] 等待 {gap}s 后开始下一个任务...")
-                self._stop.wait(gap)
-
-        self.log(f"\n[SCHEDULER] 全部完成！共 {completed}/{total} 个任务")
+        completed = len([r for r in self._runners if r.done])
+        self.log(f"\n[SCHEDULER] 全部完成！{completed}/{total} 个任务")
         socketio.emit("scheduler_status", {
             "running": False,
             "total": total,
@@ -179,6 +157,7 @@ class BotRunner:
         self.sid = sid
         self.label = label
         self.bot: BotCore | None = None
+        self.done = False
 
     def _prefix(self, msg: str) -> str:
         if self.label:
@@ -208,6 +187,7 @@ class BotRunner:
             self.log_cb(f"[SYSTEM] Bot 异常退出: {e}")
         finally:
             self.bot = None
+            self.done = True
 
     def confirm_login(self) -> None:
         """代理到 BotCore.confirm_login()"""
