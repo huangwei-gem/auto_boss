@@ -38,13 +38,13 @@ USER_AGENTS = [
 
 # CSS 选择器常量
 SELECTOR_NAV = ".user-nav"
-SELECTOR_START_CHAT = ".btn.btn-startchat"  # 旧版选择器（保留兼容）
+SELECTOR_START_CHAT = ".btn btn-startchat"  # 注意：多 class 用空格（参照源文件）
 SELECTOR_START_CHAT_TEXT = "立即沟通"       # 按文本找
 SELECTOR_START_CHAT_CONTINUE = "继续沟通"   # 之前沟通过的提示
 SELECTOR_INPUT_AREA = ".input-area"
 SELECTOR_SEND_BTN = ".send-message"
 SELECTOR_CLOSE = ".icon-close"
-SELECTOR_IMG_UPLOAD = ".toolbar-btn-content.icon.btn-sendimg.tooltip.tooltip-top"
+SELECTOR_IMG_UPLOAD = ".toolbar-btn-content icon btn-sendimg tooltip tooltip-top"  # 参照源文件（空格分隔多 class）
 SELECTOR_BOSS_ACTIVE = ".boss-active-time"
 SELECTOR_SCALE = ".icon-scale"
 SELECTOR_REC_JOB_LIST = ".rec-job-list"
