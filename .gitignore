@@ -56,3 +56,19 @@ memory_file_metadata.json
 .reme_store_v1
 *.weixin-migrate.bak
 agent.json
+
+# Runtime data (user-specific, not committed)
+chats_log/
+*.json
+
+# Virtual environment (inside project subdirectory)
+.venv/
+venv/
+
+# TODO / design notes (session-local)
+*_TODO.md
+
+# Backup / reference
+mian_ref.py
+*.bak
+*.bak2

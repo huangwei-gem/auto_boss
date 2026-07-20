@@ -389,7 +389,7 @@ class BotCore:
 
         # ── 检测沟通按钮 ──
         try:
-            chat_btn = self.dp.ele(".btn.btn-startchat", timeout=5)
+            chat_btn = self.dp.ele(".btn btn-startchat", timeout=5)
             if chat_btn is None:
                 self._log("WARN", "    未找到沟通按钮，跳过")
                 return False
@@ -448,7 +448,7 @@ class BotCore:
         if image_paths:
             try:
                 # 重新点击沟通
-                chat_btn2 = self.dp.ele(".btn.btn-startchat", timeout=5)
+                chat_btn2 = self.dp.ele(".btn btn-startchat", timeout=5)
                 if chat_btn2:
                     chat_btn2.click()
                     self._wait(1.5)
