@@ -20,25 +20,21 @@ from flask_socketio import SocketIO, emit
 # ── 路径 ──
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_DIR = os.path.dirname(BASE_DIR)
-sys.path.insert(0, PROJECT_DIR)
+CODE_DIR = os.path.join(PROJECT_DIR, "boss自动投简历")
+sys.path.insert(0, CODE_DIR)
 os.chdir(BASE_DIR)
 
 # 复制配置和数据文件到 web 工作目录（如果不存在）
 import shutil
 for fn in ("chats_log.json", "zhipin_cookies"):
-    src = os.path.join(PROJECT_DIR, "core", fn)
+    src = os.path.join(CODE_DIR, fn)
     dst = os.path.join(BASE_DIR, fn)
     if os.path.exists(src) and not os.path.exists(dst):
         shutil.copy2(src, dst)
 
-# 复制 dashboard/ 目录
-src_dir = os.path.join(PROJECT_DIR, "core", "dashboard")
-dst_dir = os.path.join(BASE_DIR, "dashboard")
-if os.path.exists(src_dir) and not os.path.exists(dst_dir):
-    shutil.copytree(src_dir, dst_dir)
-
+# ── 优先用 web_app/config.py（它有 validate_config / flatten_jobs_for_run）──
+sys.path.insert(0, BASE_DIR)
 from config import load_config, save_config, validate_config, flatten_jobs_for_run
-sys.path.insert(0, os.path.join(PROJECT_DIR, "core"))
 from bot_core import BotCore
 
 # ── Flask 应用 ──

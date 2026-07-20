@@ -72,3 +72,4 @@ venv/
 mian_ref.py
 *.bak
 *.bak2
+server_log.txt  
