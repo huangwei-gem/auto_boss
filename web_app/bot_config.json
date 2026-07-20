@@ -4,9 +4,9 @@
       "cookie_file": "zhipin_cookies.json",
       "enabled": true,
       "image_files": [
-        "dashboard/看板1.png",
         "dashboard/看板2.png",
-        "dashboard/看板3.png"
+        "dashboard/看板3.png",
+        "看板1.png"
       ],
       "jobs": [
         {

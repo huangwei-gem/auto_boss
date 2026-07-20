@@ -53,6 +53,7 @@ _bot: BotCore | None = None
 _bot_thread: threading.Thread | None = None
 _scheduler_thread: threading.Thread | None = None
 _scheduler_stop = threading.Event()
+_scheduler_instance: TaskScheduler | None = None  # 存储调度器引用，用于停止
 _config = load_config()
 _current_task: dict | None = None
 
@@ -366,11 +367,17 @@ def on_disconnect():
 @socketio.on("start_all")
 def on_start_all(data=None):
     """启动所有启用的账号×岗位任务。"""
-    global _scheduler_thread, _scheduler_stop, _bot
+    global _scheduler_thread, _scheduler_stop, _bot, _scheduler_instance
 
+    # 如果有旧的调度器线程卡住，先尝试停止
     if _scheduler_thread and _scheduler_thread.is_alive():
-        emit("bot_log", {"message": "[SYSTEM] 调度器已在运行中"})
-        return
+        emit("bot_log", {"message": "[SYSTEM] 检测到旧调度器仍在运行，正在停止旧调度器..."})
+        if _scheduler_instance:
+            _scheduler_instance.stop()
+        _scheduler_thread.join(timeout=10)
+        _scheduler_thread = None
+        _scheduler_instance = None
+        emit("bot_log", {"message": "[SYSTEM] 旧调度器已停止"})
 
     # 展开任务
     tasks = flatten_jobs_for_run(_config)
@@ -383,12 +390,14 @@ def on_start_all(data=None):
 
     _scheduler_stop.clear()
     scheduler = TaskScheduler(tasks, request.sid)
+    _scheduler_instance = scheduler
     _bot = scheduler  # 使 confirm_login / check_login 能到达当前 BotCore
 
     def _run_scheduler():
         scheduler.run()
-        global _scheduler_thread
+        global _scheduler_thread, _scheduler_instance
         _scheduler_thread = None
+        _scheduler_instance = None
 
     _scheduler_thread = threading.Thread(target=_run_scheduler, daemon=True)
     _scheduler_thread.start()
@@ -397,12 +406,16 @@ def on_start_all(data=None):
 @socketio.on("stop_all")
 def on_stop_all():
     """停止调度器。"""
-    global _scheduler_stop
+    global _scheduler_stop, _scheduler_instance
     _scheduler_stop.set()
-    # BotRunner 内部的 bot.stop 由 scheduler.stop 触发
-    emit("bot_log", {"message": "[SYSTEM] 正在停止调度器..."})
+    # 停止调度器实例（会停止所有 BotRunner）
+    if _scheduler_instance:
+        _scheduler_instance.stop()
+        emit("bot_log", {"message": "[SYSTEM] 正在停止调度器..."})
+    else:
+        emit("bot_log", {"message": "[SYSTEM] 调度器未运行"})
     emit("bot_status", {"running": False})
-    emit("scheduler_status", {"running": False}, to=request.sid)
+    emit("scheduler_status", {"running": False})
 
 
 @socketio.on("start_bot")
@@ -412,10 +425,14 @@ def on_start_bot(data):
     如果 data 中有 account/job 索引则跑特定任务，
     否则使用配置中的第一个启用的任务。
     """
-    global _bot, _bot_thread
+    global _bot, _bot_thread, _scheduler_thread
 
     if _bot_thread and _bot_thread.is_alive():
-        emit("bot_log", {"message": "[SYSTEM] Bot 已在运行中"})
+        emit("bot_log", {"message": "[SYSTEM] Bot 已在运行中，先停止旧的..."})
+        _bot_thread = None
+
+    if _scheduler_thread and _scheduler_thread.is_alive():
+        emit("bot_log", {"message": "[SYSTEM] 调度器正在运行，请先停止调度器"})
         return
 
     tasks = flatten_jobs_for_run(_config)
