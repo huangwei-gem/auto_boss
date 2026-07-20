@@ -498,10 +498,19 @@ class BotCore:
 
     def _step_browse_jobs(self) -> None:
         images = self.config.get("image_files", [])
-        valid_images = [img for img in images if os.path.isfile(img)]
-        if valid_images != images:
-            missing = [i for i in images if not os.path.isfile(i)]
-            self._log("WARN", f"以下图片不存在: {missing}")
+        # 图片路径映射：先查同目录下的 dashboard/，再查裸文件名
+        resolved = []
+        for img in images:
+            if os.path.isfile(img):
+                resolved.append(img)
+            else:
+                # 尝试在 dashboard/ 子目录中找
+                candidate = os.path.join("dashboard", img)
+                if os.path.isfile(candidate):
+                    resolved.append(candidate)
+                else:
+                    self._log("WARN", f"图片不存在: {img}")
+        valid_images = resolved
 
         min_interval = self.config.get("message_interval_min", 3)
         max_interval = self.config.get("message_interval_max", 8)
@@ -564,63 +573,83 @@ class BotCore:
         max_interval: int,
         valid_images: list[str],
     ) -> bool:
-        """投递单个岗位，成功返回 True。
-        
-        严格参照 mian.py 的工作流程：
-          1. dp.get(url) → 检查"继续沟通"→ 提取信息
-          2. dp.get(url) → 点击立即沟通 → 输入招呼语 → 发送
-          3. 关闭弹窗(icon-close)
-          4. 点击继续沟通(btn btn-startchat)
-          5. 上传图片
+        """投递单个岗位，完全参照源文件 mian.py 的工作流程。
+
+        mian.py 流程（重要：两次 dp.get(url)）：
+          第 1 次 dp.get(url)：检查是否已沟通过 & 提取信息
+          第 2 次 dp.get(url)：点击沟通 → 输入 → 发送 → 关闭 → 上传图片
         """
         greeting = self.config.get("greeting_message", "")
 
-        # ── 第 1 次访问：检查是否已沟通 & 提取信息 ──
+        # ── 第 1 次访问：检查是否之前沟通过 & 提取信息 ──
         self.dp.get(url)
         self._random_delay(3, 5)
 
-        # 检查是否之前已经沟通过
-        chat_btn_first = self.dp.ele(SELECTOR_START_CHAT, timeout=5)
-        if chat_btn_first and SELECTOR_START_CHAT_CONTINUE in chat_btn_first.text:
-            self._log("INFO", "  → 之前已沟通过，跳过")
-            return False
-
-        # 提取信息（活跃度、规模、岗位描述、薪资）
+        # 检查"继续沟通"（参照源文件）
         try:
-            boss_time = self.dp.ele(SELECTOR_BOSS_ACTIVE, timeout=5).text
-            scale = self.dp.ele(SELECTOR_SCALE, timeout=3).text
-            self._log("INFO", f"  活跃度: {boss_time}, 规模: {scale}")
+            chat_btn = self.dp.ele(SELECTOR_START_CHAT, timeout=5)
+            if chat_btn and SELECTOR_START_CHAT_CONTINUE in chat_btn.text:
+                self._log("INFO", "  → 之前已沟通过，跳过")
+                return False
         except Exception:
             pass
 
-        # ── 第 2 次访问：点击沟通 → 发送消息 ──
+        # 提取信息（参照源文件）
+        try:
+            boss_time = self.dp.ele(SELECTOR_BOSS_ACTIVE, timeout=3).text
+            scale_text = self.dp.ele(SELECTOR_SCALE, timeout=3).text
+            self._log("INFO", f"  活跃度: {boss_time}, 规模: {scale_text}")
+        except Exception:
+            pass
+
+        # ── 第 2 次访问：进入详情页，点击沟通、发送、上传图片 ──
+        # （严格参照源文件：再次 dp.get(url) 进入岗位详情）
         self.dp.get(url)
-        self._random_delay(2, 3)
+        self._random_delay(3, 5)  # 延长等待，确保页面完全加载
 
-        # 点击立即沟通
-        chat_btn = self.dp.ele(SELECTOR_START_CHAT, timeout=5)
-        if not chat_btn:
-            self._log("WARN", "  → 未找到沟通按钮")
+        # 点击"立即沟通"（参照源文件）
+        try:
+            chat_btn = self.dp.ele(SELECTOR_START_CHAT, timeout=8)
+            if not chat_btn:
+                self._log("WARN", "  → 未找到沟通按钮")
+                return False
+            # 用 text 判断是否是"立即沟通"而不是"继续沟通"
+            btn_text = chat_btn.text
+            if SELECTOR_START_CHAT_CONTINUE in btn_text:
+                self._log("INFO", "  → 之前已沟通过，跳过")
+                return False
+            chat_btn.click()
+            self._random_delay(2, 3)
+        except Exception as e:
+            self._log("WARN", f"  → 点击沟通按钮失败: {e}")
             return False
-        chat_btn.click()
-        self._random_delay(1, 2)
 
-        # 输入打招呼语
-        input_area = self.dp.ele(SELECTOR_INPUT_AREA, timeout=3)
-        if not input_area:
-            self._log("WARN", "  → 未找到输入框")
+        # 输入招呼语（参照源文件）
+        try:
+            input_area = self.dp.ele(SELECTOR_INPUT_AREA, timeout=5)
+            if not input_area:
+                self._log("WARN", "  → 未找到输入框")
+                return False
+            input_area.input(greeting)
+            self._random_delay(0.5, 1.5)
+        except Exception as e:
+            self._log("WARN", f"  → 输入消息失败: {e}")
             return False
-        input_area.input(greeting)
 
-        # 点击发送
-        send_btn = self.dp.ele(SELECTOR_SEND_BTN, timeout=3)
-        if not send_btn:
-            self._log("WARN", "  → 未找到发送按钮")
+        # 点击发送（参照源文件：dp.ele(".send-message").click()）
+        try:
+            send_btn = self.dp.ele(SELECTOR_SEND_BTN, timeout=5)
+            if not send_btn:
+                self._log("WARN", "  → 未找到发送按钮")
+                return False
+            send_btn.click()
+            self._log("SUCCESS", "  → 消息发送成功")
+            self._random_delay(1, 2)
+        except Exception as e:
+            self._log("WARN", f"  → 发送消息失败: {e}")
             return False
-        send_btn.click()
-        self._log("SUCCESS", "  → 消息发送成功")
 
-        # 关闭弹窗（严格参照源文件：icon-close）
+        # 关闭弹窗（参照源文件：dp.ele(".icon-close").click()）
         try:
             close_btn = self.dp.ele(SELECTOR_CLOSE, timeout=3)
             if close_btn:
@@ -629,29 +658,32 @@ class BotCore:
         except Exception:
             pass
 
-        # 点击继续沟通（严格参照源文件：第二次点击 btn btn-startchat）
+        # 再次点击"继续沟通"以打开上传界面（参照源文件）
         try:
             continue_btn = self.dp.ele(SELECTOR_START_CHAT, timeout=3)
             if continue_btn:
                 continue_btn.click()
                 self._random_delay(1, 2)
         except Exception:
-            self._log("WARN", "  → 未找到继续沟通按钮")
+            pass
 
-        # 上传图片（严格参照源文件：在继续沟通之后上传）
+        # 上传图片（参照源文件：dp.ele(".toolbar-btn-content ...").click.to_upload()）
         if valid_images:
             for img_path in valid_images:
                 try:
-                    img_ele = self.dp.ele(SELECTOR_IMG_UPLOAD, timeout=3)
+                    # 先等上传按钮稳定
+                    self._random_delay(0.5, 1.5)
+                    img_ele = self.dp.ele(SELECTOR_IMG_UPLOAD, timeout=5)
                     if img_ele:
                         img_ele.click.to_upload(img_path)
                         self._log("INFO", f"  → 上传图片: {os.path.basename(img_path)}")
+                        self._random_delay(1, 2)
                     else:
-                        self._log("WARN", f"  → 未找到图片上传按钮")
+                        self._log("WARN", "  → 未找到图片上传按钮")
                 except Exception as e:
                     self._log("ERROR", f"  → 图片上传失败: {e}")
 
-        # 随机间隔 + 额外抖动防特征检测
+        # 随机间隔
         base_delay = random.uniform(min_interval, max_interval)
         jitter = random.gauss(0, base_delay * 0.2)
         total_delay = max(1.5, base_delay + jitter)
