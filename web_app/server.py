@@ -66,39 +66,35 @@ logger = logging.getLogger("boss-web")
 # ═══════════════════════════════════════════════════════════
 
 class TaskScheduler:
-    """并发执行所有任务，每个任务独享一个 BotCore（独立浏览器实例）。"""
+    """串行执行任务。同账号下共用一个 BotCore（一个浏览器），
+    等一个岗位搜完投递完，再搜下一个。不同账号则各开一个浏览器。"""
 
     def __init__(self, tasks: list[dict], sid: str):
         self.tasks = tasks
         self.sid = sid
         self._stop = threading.Event()
-        self._runners: list[BotRunner] = []
-        self._threads: list[threading.Thread] = []
+        self._runner: BotRunner | None = None
 
     def log(self, msg: str):
         socketio.emit("bot_log", {"message": msg}, to=self.sid)
 
     def confirm_login(self) -> None:
-        """将所有 runner 的 confirm_login 代理到前台。"""
-        for runner in self._runners:
-            if runner and runner.bot:
-                runner.bot.confirm_login()
+        if self._runner and self._runner.bot:
+            self._runner.bot.confirm_login()
 
     def check_login_status(self) -> bool:
-        """检查任一 runner 的登录状态。"""
-        for runner in self._runners:
-            if runner and runner.bot and runner.bot.check_login_status():
-                return True
+        if self._runner and self._runner.bot and self._runner.bot.check_login_status():
+            return True
         return False
 
     def stop(self):
         self._stop.set()
-        for runner in self._runners:
-            runner.stop()
+        if self._runner:
+            self._runner.stop()
 
     def run(self):
         total = len(self.tasks)
-        self.log(f"[SCHEDULER] 并发启动 {total} 个任务...")
+        self.log(f"[SCHEDULER] 启动 {total} 个任务（串行模式）")
 
         socketio.emit("scheduler_status", {
             "running": True,
@@ -107,12 +103,19 @@ class TaskScheduler:
             "current": None,
         }, to=self.sid)
 
-        # 并发启动所有任务
+        current_runner: BotRunner | None = None
+
         for idx, task in enumerate(self.tasks):
             if self._stop.is_set():
                 break
 
+            # 停止旧的 runner（切换任务前清理）
+            if current_runner:
+                current_runner.stop()
+                current_runner = None
+
             label = f"{task['account_name']} / {task['query']}({task['city']})"
+            self.log(f"[SCHEDULER] ⏳ 开始 [{idx+1}/{total}] {label}")
 
             bot_config = {
                 "city": task["city"],
@@ -122,14 +125,12 @@ class TaskScheduler:
                 "image_files": task["image_files"],
                 "message_interval_min": task["message_interval_min"],
                 "message_interval_max": task["message_interval_max"],
-                # 高级过滤（供后续 BotCore 使用）
                 "min_salary": task.get("min_salary", 0),
                 "max_salary": task.get("max_salary", 0),
                 "experience": task.get("experience", ""),
                 "education": task.get("education", ""),
                 "exclude_companies": task.get("exclude_companies", []),
                 "include_keywords": task.get("include_keywords", []),
-                # 全局设置（随任务携带）
                 "browser": _config.get("browser", {}),
                 "anti_detection": _config.get("anti_detection", {}),
                 "rate_limit": _config.get("rate_limit", {}),
@@ -137,19 +138,21 @@ class TaskScheduler:
             }
 
             runner = BotRunner(bot_config, self.sid, label)
-            self._runners.append(runner)
+            self._runner = runner
+            current_runner = runner
+            runner.run()  # 串行：等这一个跑完才继续
 
-            t = threading.Thread(target=runner.run, daemon=True)
-            self._threads.append(t)
-            t.start()
+            # 更新进度
+            socketio.emit("scheduler_status", {
+                "running": not self._stop.is_set(),
+                "total": total,
+                "completed": idx + 1,
+                "current": label if not self._stop.is_set() else None,
+            }, to=self.sid)
 
-            self.log(f"[SCHEDULER] ✓ 已启动 [{idx+1}/{total}] {label}")
+        self._runner = None
 
-        # 等待所有线程完成
-        for t in self._threads:
-            t.join()
-
-        completed = len([r for r in self._runners if r.done])
+        completed = total if not self._stop.is_set() else idx
         self.log(f"\n[SCHEDULER] 全部完成！{completed}/{total} 个任务")
         socketio.emit("scheduler_status", {
             "running": False,
