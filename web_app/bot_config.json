@@ -1,0 +1,32 @@
+{
+  "accounts": [
+    {
+      "cookie_file": "zhipin_cookies.json",
+      "enabled": true,
+      "image_files": [
+        "dashboard/看板1.png",
+        "dashboard/看板2.png",
+        "dashboard/看板3.png"
+      ],
+      "jobs": [
+        {
+          "city": "上海",
+          "enabled": true,
+          "greeting_message": "您好，我是双一流的本科，应聘数据分析岗位。在校系统学习数据分析相关知识，掌握Excel、基础SQL与数据整理技能，具备数据思维。做事严谨细心，学习能力强，愿意踏实积累。十分认可贵公司，希望能获得面试机会。",
+          "query": "数据分析",
+          "scroll_pages": 5
+        },
+        {
+          "city": "上海",
+          "enabled": true,
+          "greeting_message": "您好，我是双一流的本科，应聘数据分析岗位。在校系统学习数据分析相关知识，掌握Excel、基础SQL与数据整理技能，具备数据思维。做事严谨细心，学习能力强，愿意踏实积累。十分认可贵公司，希望能获得面试机会。",
+          "query": "产品经理",
+          "scroll_pages": 3
+        }
+      ],
+      "message_interval_max": 8,
+      "message_interval_min": 3,
+      "name": "主账号"
+    }
+  ]
+}

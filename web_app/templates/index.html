@@ -1,0 +1,539 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Boss 直聘 · 自动投递</title>
+<script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@200;300;400;500;600;700;800&family=Plus+Jakarta+Sans:wght@200;300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
+:root {
+  --bg-deep:#050505; --bg-card:rgba(255,255,255,0.04); --bg-card-hover:rgba(255,255,255,0.07);
+  --bg-input:rgba(255,255,255,0.06); --bg-input-focus:rgba(255,255,255,0.09);
+  --border-hair:rgba(255,255,255,0.08); --border-hair-strong:rgba(255,255,255,0.15);
+  --text-primary:#F0F0F0; --text-secondary:rgba(255,255,255,0.55); --text-tertiary:rgba(255,255,255,0.32);
+  --accent-emerald:#34D399; --accent-blue:#60A5FA; --status-error:#FB7185; --status-warn:#FBBF24;
+  --radius-sm:8px; --radius-md:12px; --radius-lg:20px; --radius-xl:28px;
+  --ease-premium:cubic-bezier(0.32,0.72,0,1);
+}
+html{height:100%}
+body{background:var(--bg-deep);color:var(--text-primary);font-family:'Geist','Plus Jakarta Sans',-apple-system,sans-serif;height:100%;overflow:hidden}
+body::after{content:'';position:fixed;inset:0;z-index:50;pointer-events:none;background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.035'/%3E%3C/svg%3E")}
+.ambient-orbs{position:fixed;inset:0;z-index:-1;pointer-events:none;overflow:hidden}
+.orb{position:absolute;border-radius:50%;filter:blur(80px);opacity:.10;will-change:transform}
+.orb-1{width:500px;height:500px;background:radial-gradient(circle,#34D399,transparent);top:-20%;left:-15%;animation:orbFloat 30s ease-in-out infinite alternate}
+.orb-2{width:400px;height:400px;background:radial-gradient(circle,#60A5FA,transparent);bottom:-15%;right:-8%;animation:orbFloat 25s ease-in-out infinite alternate-reverse}
+.orb-3{width:350px;height:350px;background:radial-gradient(circle,#A78BFA,transparent);top:60%;left:70%;animation:orbFloat 35s ease-in-out infinite alternate}
+@keyframes orbFloat{0%{transform:translate(0,0) scale(1)}100%{transform:translate(60px,-40px) scale(1.1)}}
+.app{display:flex;height:100dvh;position:relative;z-index:1}
+.left-panel{width:460px;min-width:400px;padding:1rem;display:flex;flex-direction:column;gap:.75rem;border-right:1px solid var(--border-hair)}
+.right-panel{flex:1;display:flex;flex-direction:column;padding:1rem;gap:.75rem;min-width:0}
+.glass{background:var(--bg-card);border:1px solid var(--border-hair);border-radius:var(--radius-lg);padding:1.25rem;backdrop-filter:blur(12px)}
+.scroll-area{flex:1;overflow-y:auto;scrollbar-width:thin;scrollbar-color:rgba(255,255,255,0.08) transparent}
+.scroll-area::-webkit-scrollbar{width:4px}
+.scroll-area::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.12);border-radius:4px}
+.section-label{font-size:.6rem;text-transform:uppercase;letter-spacing:.15em;color:var(--text-tertiary);margin-bottom:.5rem;font-weight:500}
+.form-group{margin-bottom:.75rem}
+.form-group label{display:block;font-size:.75rem;font-weight:400;color:var(--text-secondary);margin-bottom:.35rem;letter-spacing:.01em}
+.form-input,.form-select,.form-textarea{width:100%;background:var(--bg-input);border:1px solid var(--border-hair);border-radius:var(--radius-sm);padding:.55rem .75rem;color:var(--text-primary);font-family:'Geist',sans-serif;font-size:.8rem;outline:none;transition:all .3s var(--ease-premium)}
+.form-input:focus,.form-select:focus,.form-textarea:focus{background:var(--bg-input-focus);border-color:var(--border-hair-strong)}
+.form-textarea{resize:vertical;min-height:60px;line-height:1.6}
+.row{display:flex;gap:.75rem}
+.row>*{flex:1;min-width:0}
+.status-bar{display:flex;align-items:center;justify-content:space-between;padding:.6rem 1rem;background:var(--bg-card);border:1px solid var(--border-hair);border-radius:var(--radius-md)}
+.status-left{display:flex;align-items:center;gap:.75rem}
+.status-dot{width:8px;height:8px;border-radius:50%;background:rgba(255,255,255,0.25);transition:background .4s var(--ease-premium)}
+.status-dot.running{background:var(--accent-emerald);box-shadow:0 0 8px rgba(52,211,153,.4)}
+.status-text{font-size:.8rem;color:var(--text-secondary)}
+.stats{display:flex;gap:1.5rem}
+.stat-item{text-align:center}
+.stat-value{font-size:1.25rem;font-weight:600;letter-spacing:-.02em;line-height:1.2}
+.stat-label{font-size:.6rem;color:var(--text-tertiary);text-transform:uppercase;letter-spacing:.1em}
+.screenshot-box{flex:1;background:var(--bg-card);border:1px solid var(--border-hair);border-radius:var(--radius-lg);overflow:hidden;display:flex;align-items:center;justify-content:center;min-height:0;position:relative}
+.screenshot-box img{max-width:100%;max-height:100%;object-fit:contain;display:block}
+.screenshot-placeholder{color:var(--text-tertiary);font-size:.85rem;font-weight:300;text-align:center;padding:1rem}
+.log-area{height:180px;min-height:120px;overflow-y:auto;font-family:'JetBrains Mono',monospace;font-size:.7rem;line-height:1.7;padding:.75rem;scrollbar-width:thin;scrollbar-color:rgba(255,255,255,0.08) transparent}
+.log-area::-webkit-scrollbar{width:4px}
+.log-area::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.12);border-radius:4px}
+.log-entry{opacity:0;animation:logFade .25s var(--ease-premium) forwards}
+@keyframes logFade{to{opacity:1}}
+.log-time{color:var(--text-tertiary);margin-right:.5rem}
+.log-INFO{color:var(--text-secondary)}
+.log-SUCCESS{color:var(--accent-emerald)}
+.log-ERROR{color:var(--status-error)}
+.log-WARN{color:var(--status-warn)}
+.log-LOGIN{color:var(--accent-blue)}
+.log-SYSTEM{color:var(--text-tertiary);font-style:italic}
+.btn-group{display:flex;gap:.5rem;flex-wrap:wrap}
+.btn{display:inline-flex;align-items:center;gap:.5rem;padding:.5rem 1rem;border-radius:9999px;font-family:'Geist',sans-serif;font-size:.8rem;font-weight:500;border:1px solid var(--border-hair);background:var(--bg-card);color:var(--text-secondary);cursor:pointer;transition:all .35s var(--ease-premium);text-decoration:none;white-space:nowrap}
+.btn:hover{background:var(--bg-card-hover);border-color:var(--border-hair-strong);color:var(--text-primary);transform:translateY(-1px)}
+.btn:active{transform:scale(.97)}
+.btn-primary{background:rgba(52,211,153,.12);border-color:rgba(52,211,153,.25);color:var(--accent-emerald)}
+.btn-primary:hover{background:rgba(52,211,153,.2);border-color:rgba(52,211,153,.4)}
+.btn-danger{background:rgba(251,113,133,.1);border-color:rgba(251,113,133,.2);color:var(--status-error)}
+.btn-danger:hover{background:rgba(251,113,133,.18);border-color:rgba(251,113,133,.35)}
+.btn:disabled{opacity:.3;cursor:not-allowed;transform:none!important}
+.btn-sm{font-size:.7rem;padding:.3rem .65rem}
+.chip-group{display:flex;flex-wrap:wrap;gap:.35rem}
+.chip{display:inline-flex;align-items:center;gap:.35rem;border-radius:9999px;padding:.2rem .6rem;font-size:.65rem;background:var(--bg-input);border:1px solid var(--border-hair);color:var(--text-secondary)}
+.chip-remove{cursor:pointer;opacity:.3;transition:opacity .2s;font-size:.7rem;line-height:1}
+.chip-remove:hover{opacity:1;color:var(--status-error)}
+/* ── 账号 Tab ── */
+.account-tabs{display:flex;gap:.35rem;overflow-x:auto;scrollbar-width:none;flex-shrink:0}
+.account-tabs::-webkit-scrollbar{display:none}
+.account-tab{flex-shrink:0;padding:.35rem .75rem;border-radius:9999px;font-size:.75rem;font-weight:500;background:var(--bg-input);border:1px solid transparent;color:var(--text-tertiary);cursor:pointer;transition:all .3s var(--ease-premium);white-space:nowrap}
+.account-tab:hover{background:var(--bg-card-hover);color:var(--text-secondary)}
+.account-tab.active{background:rgba(52,211,153,.1);border-color:rgba(52,211,153,.3);color:var(--accent-emerald)}
+.account-tab .badge{display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:50%;font-size:.55rem;background:rgba(255,255,255,0.08);margin-left:.3rem}
+.account-tab .toggle-dot{display:inline-block;width:6px;height:6px;border-radius:50%;margin-right:.35rem;vertical-align:middle}
+.toggle-dot.on{background:var(--accent-emerald)}
+.toggle-dot.off{background:var(--text-tertiary)}
+/* ── 岗位卡片 ── */
+.job-card{background:var(--bg-input);border:1px solid var(--border-hair);border-radius:var(--radius-md);padding:.75rem;margin-bottom:.5rem;transition:all .3s var(--ease-premium)}
+.job-card.disabled{opacity:.5}
+.job-card-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:.5rem}
+.job-card-title{font-size:.8rem;font-weight:500;color:var(--text-primary)}
+.job-card-actions{display:flex;gap:.35rem}
+.toggle-switch{position:relative;width:28px;height:16px;flex-shrink:0;cursor:pointer;border-radius:9999px;background:rgba(255,255,255,0.1);transition:background .3s var(--ease-premium)}
+.toggle-switch.on{background:var(--accent-emerald)}
+.toggle-switch::after{content:'';position:absolute;top:2px;left:2px;width:12px;height:12px;border-radius:50%;background:#fff;transition:transform .3s var(--ease-premium)}
+.toggle-switch.on::after{transform:translateX(12px)}
+@media(max-width:900px){.app{flex-direction:column}.left-panel{width:100%;min-width:unset;max-height:60dvh;border-right:none;border-bottom:1px solid var(--border-hair)}.log-area{height:100px}}
+</style>
+</head>
+<body>
+<div class="ambient-orbs"><div class="orb orb-1"></div><div class="orb orb-2"></div><div class="orb orb-3"></div></div>
+
+<div class="app">
+
+  <!-- ══ LEFT PANEL ══ -->
+  <div class="left-panel">
+    <!-- 标题行 -->
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
+      <span style="font-weight:600;font-size:.9rem;letter-spacing:-.02em;">Boss 直聘 · 自动投递</span>
+      <span class="btn btn-sm" onclick="saveConfig()" style="font-size:.65rem;">保存配置</span>
+    </div>
+
+    <!-- 账号 Tab -->
+    <div id="accountTabs" class="account-tabs"></div>
+
+    <!-- 配置表单 (绑定当前 active 账号) -->
+    <div class="scroll-area glass" style="flex:1;">
+      <!-- 账号级设置 -->
+      <div class="form-group" style="display:flex;align-items:center;gap:.5rem;">
+        <label style="margin:0;flex-shrink:0;">账号启用</label>
+        <span id="acctToggle" class="toggle-switch on" onclick="toggleCurrentAccount()"></span>
+        <label style="margin:0 0 0 .5rem;flex-shrink:0;">昵称</label>
+        <input id="acctName" class="form-input" style="flex:1;" onchange="syncCurrentAccount()">
+      </div>
+      <div class="row">
+        <div class="form-group">
+          <label>消息间隔 (秒)</label>
+          <div class="row" style="gap:.35rem;">
+            <input id="intervalMin" class="form-input" type="number" min="1" onchange="syncCurrentAccount()">
+            <span style="color:var(--text-tertiary);line-height:2;">—</span>
+            <input id="intervalMax" class="form-input" type="number" min="1" onchange="syncCurrentAccount()">
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Cookie 文件</label>
+          <input id="cookieFile" class="form-input" onchange="syncCurrentAccount()">
+        </div>
+      </div>
+
+      <div class="section-label" style="margin-top:.5rem;">岗位列表</div>
+      <div id="jobList"></div>
+      <button class="btn btn-sm" onclick="addJob()" style="width:100%;margin-bottom:.75rem;justify-content:center;">+ 添加岗位</button>
+
+      <div style="display:flex;justify-content:space-between;align-items:center;margin:.5rem 0 .35rem;">
+        <div class="section-label" style="margin:0;">图片附件</div>
+        <button class="btn btn-sm" onclick="deleteAccount(activeAccountIdx)" style="font-size:.6rem;color:var(--status-error);padding:.2rem .5rem;">删除此账号</button>
+      </div>
+      <div class="form-group">
+        <div id="imageChips" class="chip-group" style="margin-bottom:.35rem;"></div>
+        <div style="display:flex;gap:.35rem;">
+          <select id="imageSelector" class="form-select" style="font-size:.65rem;"><option value="">— 选择添加 —</option></select>
+          <button class="btn btn-sm" onclick="addSelectedImage()">+</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 底部按钮 -->
+    <div class="btn-group" style="flex-shrink:0;">
+      <button id="btnStartAll" class="btn btn-primary" onclick="startAll()"><span class="btn-icon" style="width:1.2rem;height:1.2rem;font-size:.6rem;">&#9654;</span> 启动全部任务</button>
+      <button id="btnStopAll" class="btn btn-danger" onclick="stopAll()" disabled><span class="btn-icon" style="width:1.2rem;height:1.2rem;font-size:.6rem;">&#9632;</span> 停止全部</button>
+      <button class="btn btn-sm" onclick="addAccount()" style="font-size:.65rem;">+ 账号</button>
+    </div>
+  </div>
+
+  <!-- ══ RIGHT PANEL ══ -->
+  <div class="right-panel">
+    <div class="status-bar">
+      <div class="status-left">
+        <span id="statusDot" class="status-dot"></span>
+        <span id="statusText" class="status-text">就绪</span>
+        <span id="currentTaskLabel" style="font-size:.7rem;color:var(--text-tertiary);margin-left:.5rem;"></span>
+      </div>
+      <div class="stats">
+        <div class="stat-item"><div id="statTotal" class="stat-value" style="color:var(--text-secondary);">0</div><div class="stat-label">浏览</div></div>
+        <div class="stat-item"><div id="statApplied" class="stat-value" style="color:var(--accent-emerald);">0</div><div class="stat-label">已投</div></div>
+        <div class="stat-item"><div id="statSkipped" class="stat-value" style="color:var(--status-warn);">0</div><div class="stat-label">跳过</div></div>
+      </div>
+    </div>
+    <div class="screenshot-box">
+      <img id="screenshotImg" src="" alt="browser preview" style="display:none;">
+      <div id="screenshotPlaceholder" class="screenshot-placeholder"><span style="display:block;font-size:2.5rem;margin-bottom:.75rem;opacity:.3;">&#9671;</span>浏览器实时预览</div>
+    </div>
+    <div class="glass" style="flex-shrink:0;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.25rem;">
+        <div class="section-label" style="margin:0;">Console</div>
+        <div>
+          <button id="btnConfirmLogin" class="btn btn-sm" onclick="confirmLogin()" disabled style="font-size:.6rem;">确认已登录</button>
+          <button id="btnCheckLogin" class="btn btn-sm" onclick="checkLogin()" disabled style="font-size:.6rem;">检查登录</button>
+        </div>
+      </div>
+      <div id="logArea" class="log-area"><div class="log-entry"><span class="log-time">&#9654;</span><span class="log-SYSTEM">Web 界面就绪...</span></div></div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+const socket = io();
+let stats = { total:0, applied:0, skipped:0 };
+let config = { accounts:[] };
+let activeAccountIdx = 0;
+let availableImages = [];
+
+// ═══ 配置加载与保存 ═══
+
+async function loadConfig() {
+  try {
+    const res = await fetch('/api/config');
+    config = await res.json();
+    if (!config.accounts || !config.accounts.length) {
+      config = { accounts: [{ name:'主账号', enabled:true, cookie_file:'zhipin_cookies.json', image_files:[], message_interval_min:3, message_interval_max:8, jobs:[{ enabled:true, city:'上海', query:'数据分析', scroll_pages:5, greeting_message:'您好，希望能获得面试机会。' }] }] };
+    }
+    renderTabs();
+    renderAccount(0);
+    loadImages();
+  } catch(e) { addLog('ERROR', '配置加载失败: ' + e.message); }
+}
+
+async function saveConfig() {
+  syncCurrentAccount();
+  try {
+    const res = await fetch('/api/config', { method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify(config) });
+    const data = await res.json();
+    if (data.status === 'ok') {
+      config = data.config;
+      addLog('SYSTEM', '配置已保存');
+    } else {
+      addLog('ERROR', '保存失败: ' + (data.errors||[]).join(', '));
+    }
+  } catch(e) { addLog('ERROR', '保存异常: ' + e.message); }
+}
+
+// ═══ 账号管理 ═══
+
+function renderTabs() {
+  const tabs = document.getElementById('accountTabs');
+  tabs.innerHTML = config.accounts.map((a, i) =>
+    `<div class="account-tab${i===activeAccountIdx?' active':''}" onclick="switchAccount(${i})">
+      <span class="toggle-dot ${a.enabled?'on':'off'}"></span>${escHtml(a.name || '账号'+(i+1))}
+      <span class="badge">${(a.jobs||[]).filter(j=>j.enabled).length}/${(a.jobs||[]).length}</span>
+    </div>`
+  ).join('');
+}
+
+function switchAccount(i) {
+  syncCurrentAccount();
+  activeAccountIdx = i;
+  renderTabs();
+  renderAccount(i);
+}
+
+function renderAccount(i) {
+  const a = config.accounts[i];
+  if (!a) return;
+  document.getElementById('acctToggle').className = 'toggle-switch' + (a.enabled ? ' on' : '');
+  document.getElementById('acctName').value = a.name || '';
+  document.getElementById('intervalMin').value = a.message_interval_min || 3;
+  document.getElementById('intervalMax').value = a.message_interval_max || 8;
+  document.getElementById('cookieFile').value = a.cookie_file || '';
+  renderJobs(i);
+  renderImageChips();
+}
+
+function syncCurrentAccount() {
+  const a = config.accounts[activeAccountIdx];
+  if (!a) return;
+  a.name = document.getElementById('acctName').value.trim() || ('账号'+(activeAccountIdx+1));
+  a.message_interval_min = parseInt(document.getElementById('intervalMin').value) || 3;
+  a.message_interval_max = parseInt(document.getElementById('intervalMax').value) || 8;
+  a.cookie_file = document.getElementById('cookieFile').value.trim() || 'zhipin_cookies.json';
+  // 从 jobs 表单同步
+  document.querySelectorAll('.job-card').forEach(card => {
+    const ji = parseInt(card.dataset.jobIndex);
+    const job = a.jobs[ji];
+    if (!job) return;
+    const q = card.querySelector('.job-query');
+    const c = card.querySelector('.job-city');
+    const p = card.querySelector('.job-pages');
+    const g = card.querySelector('.job-greeting');
+    if (q) job.query = q.value;
+    if (c) job.city = c.value;
+    if (p) job.scroll_pages = parseInt(p.value) || 5;
+    if (g) job.greeting_message = g.value;
+  });
+}
+
+function toggleCurrentAccount() {
+  const a = config.accounts[activeAccountIdx];
+  if (!a) return;
+  a.enabled = !a.enabled;
+  document.getElementById('acctToggle').className = 'toggle-switch' + (a.enabled ? ' on' : '');
+  renderTabs();
+}
+
+async function addAccount() {
+  syncCurrentAccount();
+  try {
+    const res = await fetch('/api/config/accounts', { method:'POST' });
+    const data = await res.json();
+    if (data.status === 'ok') {
+      config.accounts = data.accounts;
+      activeAccountIdx = config.accounts.length - 1;
+      renderTabs();
+      renderAccount(activeAccountIdx);
+      addLog('INFO', '已添加新账号');
+    } else { addLog('ERROR', '添加账号失败'); }
+  } catch(e) { addLog('ERROR', '添加账号异常: ' + e.message); }
+}
+
+async function deleteAccount(i) {
+  if (!confirm('确定删除账号「' + (config.accounts[i]?.name || '账号'+(i+1)) + '」？')) return;
+  syncCurrentAccount();
+  try {
+    const res = await fetch('/api/config/accounts/' + i, { method:'DELETE' });
+    const data = await res.json();
+    if (data.status === 'ok') {
+      config.accounts = data.accounts;
+      if (activeAccountIdx >= config.accounts.length) activeAccountIdx = Math.max(0, config.accounts.length - 1);
+      renderTabs();
+      renderAccount(activeAccountIdx);
+      addLog('INFO', '已删除账号');
+    } else { addLog('ERROR', '删除账号失败'); }
+  } catch(e) { addLog('ERROR', e.message); }
+}
+
+// ═══ 岗位管理 ═══
+
+function renderJobs(ai) {
+  const a = config.accounts[ai];
+  const container = document.getElementById('jobList');
+  if (!a || !a.jobs || !a.jobs.length) {
+    container.innerHTML = '<div style="color:var(--text-tertiary);font-size:.7rem;padding:.5rem 0;">暂无岗位，点击下方添加</div>';
+    return;
+  }
+  container.innerHTML = a.jobs.map((job, ji) => `
+    <div class="job-card${job.enabled?'':' disabled'}" data-job-index="${ji}">
+      <div class="job-card-header">
+        <div style="display:flex;align-items:center;gap:.5rem;">
+          <span class="toggle-switch${job.enabled?' on':''}" onclick="toggleJob(${ji})"></span>
+          <span class="job-card-title">岗位 ${ji+1}</span>
+        </div>
+        <div class="job-card-actions">
+          <button class="btn btn-sm" onclick="deleteJob(${ji})" style="font-size:.6rem;color:var(--status-error);padding:.2rem .5rem;">删除</button>
+        </div>
+      </div>
+      <div class="row">
+        <div class="form-group"><label>关键词</label><input class="form-input job-query" value="${escAttr(job.query||'')}" onchange="syncCurrentAccount()" placeholder="数据分析"></div>
+        <div class="form-group"><label>城市</label>
+          <select class="form-select job-city" onchange="syncCurrentAccount()">
+            ${['上海','北京','深圳','广州','杭州','成都','武汉','南京','西安','苏州'].map(c=>`<option${c===job.city?' selected':''}>${c}</option>`).join('')}
+          </select>
+        </div>
+        <div class="form-group"><label>页数</label><input class="form-input job-pages" type="number" min="1" value="${job.scroll_pages||5}" onchange="syncCurrentAccount()"></div>
+      </div>
+      <div class="form-group"><label>打招呼语</label><textarea class="form-textarea job-greeting" rows="2" onchange="syncCurrentAccount()">${escHtml(job.greeting_message||'')}</textarea></div>
+    </div>
+  `).join('');
+}
+
+function toggleJob(ji) {
+  const a = config.accounts[activeAccountIdx];
+  if (!a || !a.jobs[ji]) return;
+  a.jobs[ji].enabled = !a.jobs[ji].enabled;
+  renderJobs(activeAccountIdx);
+  renderTabs();
+}
+
+async function addJob() {
+  syncCurrentAccount();
+  try {
+    const res = await fetch('/api/config/accounts/' + activeAccountIdx + '/jobs', { method:'POST' });
+    const data = await res.json();
+    if (data.status === 'ok') {
+      config.accounts = data.accounts;
+      renderJobs(activeAccountIdx);
+      renderTabs();
+      addLog('INFO', '已添加岗位');
+    } else { addLog('ERROR', '添加岗位失败'); }
+  } catch(e) { addLog('ERROR', e.message); }
+}
+
+async function deleteJob(ji) {
+  if (!confirm('确定删除此岗位？')) return;
+  syncCurrentAccount();
+  try {
+    const res = await fetch('/api/config/accounts/' + activeAccountIdx + '/jobs/' + ji, { method:'DELETE' });
+    const data = await res.json();
+    if (data.status === 'ok') {
+      config.accounts = data.accounts;
+      renderJobs(activeAccountIdx);
+      renderTabs();
+      addLog('INFO', '已删除岗位');
+    } else { addLog('ERROR', '删除岗位失败'); }
+  } catch(e) { addLog('ERROR', e.message); }
+}
+
+// ═══ 图片管理 ═══
+
+async function loadImages() {
+  try {
+    const res = await fetch('/api/images');
+    availableImages = await res.json();
+    const sel = document.getElementById('imageSelector');
+    sel.innerHTML = '<option value="">— 选择添加 —</option>' +
+      availableImages.map(f => '<option value="'+escAttr(f)+'">'+escHtml(f)+'</option>').join('');
+  } catch(e) {}
+}
+
+function renderImageChips() {
+  const a = config.accounts[activeAccountIdx];
+  if (!a) return;
+  const c = document.getElementById('imageChips');
+  const files = a.image_files || [];
+  if (!files.length) { c.innerHTML = '<span style="color:var(--text-tertiary);font-size:.7rem;">未选择图片</span>'; return; }
+  c.innerHTML = files.map(f =>
+    '<span class="chip">'+escHtml(f)+'<span class="chip-remove" onclick="removeImage('+JSON.stringify(f)+')">&#10005;</span></span>'
+  ).join('');
+}
+
+function removeImage(name) {
+  const a = config.accounts[activeAccountIdx];
+  if (!a) return;
+  a.image_files = (a.image_files || []).filter(f => f !== name);
+  renderImageChips();
+}
+
+function addSelectedImage() {
+  const sel = document.getElementById('imageSelector');
+  const name = sel.value;
+  if (!name) return;
+  const a = config.accounts[activeAccountIdx];
+  if (!a) return;
+  if (!a.image_files) a.image_files = [];
+  if (!a.image_files.includes(name)) { a.image_files.push(name); renderImageChips(); }
+  sel.value = '';
+}
+
+// ═══ 启动/停止 ═══
+
+function startAll() {
+  saveConfig().then(() => {
+    socket.emit('start_all');
+    addLog('SYSTEM', '正在启动所有任务...');
+  });
+}
+
+function stopAll() {
+  socket.emit('stop_all');
+  addLog('SYSTEM', '正在停止所有任务...');
+}
+
+function confirmLogin() { socket.emit('confirm_login'); }
+function checkLogin() { socket.emit('check_login'); }
+
+function setControls(running) {
+  document.getElementById('btnStartAll').disabled = running;
+  document.getElementById('btnStopAll').disabled = !running;
+  document.getElementById('btnConfirmLogin').disabled = !running;
+  document.getElementById('btnCheckLogin').disabled = !running;
+  const dot = document.getElementById('statusDot');
+  document.getElementById('statusText').textContent = running ? '运行中' : '就绪';
+  dot.className = 'status-dot' + (running ? ' running' : '');
+}
+
+function updateStats() {
+  document.getElementById('statTotal').textContent = stats.total;
+  document.getElementById('statApplied').textContent = stats.applied;
+  document.getElementById('statSkipped').textContent = stats.skipped;
+}
+
+// ═══ 工具 ═══
+
+function escHtml(t) { const d=document.createElement('div'); d.textContent=t; return d.innerHTML; }
+function escAttr(t) { return (t||'').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
+
+function addLog(level, message) {
+  const area = document.getElementById('logArea');
+  const div = document.createElement('div');
+  div.className = 'log-entry';
+  const t = new Date().toLocaleTimeString();
+  div.innerHTML = '<span class="log-time">'+t+'</span><span class="log-'+level+'">'+escHtml(message)+'</span>';
+  area.appendChild(div);
+  area.scrollTop = area.scrollHeight;
+  while (area.children.length > 300) area.removeChild(area.firstChild);
+}
+
+// ═══ SocketIO ═══
+
+socket.on('connect', () => addLog('SYSTEM', 'WebSocket 已连接'));
+socket.on('disconnect', () => { addLog('ERROR','WebSocket 断开'); });
+socket.on('bot_log', (data) => { addLog('INFO', data.message); });
+socket.on('bot_progress', (data) => {
+  if (data.total !== undefined) stats.total = data.total;
+  if (data.applied !== undefined) stats.applied = data.applied;
+  if (data.skipped !== undefined) stats.skipped = data.skipped;
+  updateStats();
+});
+socket.on('bot_screenshot', (data) => {
+  const img = document.getElementById('screenshotImg');
+  const plc = document.getElementById('screenshotPlaceholder');
+  img.src = 'data:image/png;base64,' + data.image;
+  img.style.display = 'block';
+  plc.style.display = 'none';
+  document.getElementById('currentTaskLabel').textContent = data.label || '';
+});
+socket.on('bot_status', (data) => {
+  setControls(data.running);
+  if (!data.running) {
+    document.getElementById('currentTaskLabel').textContent = '';
+  }
+});
+socket.on('scheduler_status', (data) => {
+  setControls(data.running);
+  if (data.current) {
+    document.getElementById('currentTaskLabel').textContent =
+      data.current.account + ' / ' + data.current.query + '(' + data.current.city + ')';
+  } else if (!data.running) {
+    document.getElementById('currentTaskLabel').textContent = '';
+  }
+});
+socket.on('bot_login', () => {
+  document.getElementById('btnConfirmLogin').disabled = false;
+});
+socket.on('login_result', (data) => {
+  if (data.success) addLog('SUCCESS', '登录状态正常');
+  else addLog('ERROR', '未登录');
+});
+
+loadConfig();
+</script>
+</body>
+</html>
