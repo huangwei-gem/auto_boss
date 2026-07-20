@@ -15,7 +15,7 @@ import time
 import random
 from typing import Optional
 
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, render_template, request, jsonify, send_from_directory
 from flask_socketio import SocketIO, emit
 
 # ── 路径 ──
@@ -353,6 +353,47 @@ def api_list_images():
             if f.lower().endswith((".png", ".jpg", ".jpeg", ".gif", ".webp")):
                 files.append(f)
     return jsonify(files)
+
+
+@app.route("/api/images/upload", methods=["POST"])
+def api_upload_image():
+    """上传图片到 dashboard/ 目录。"""
+    img_dir = os.path.join(BASE_DIR, "dashboard")
+    os.makedirs(img_dir, exist_ok=True)
+
+    if "file" not in request.files:
+        return jsonify({"status": "error", "errors": ["未选择文件"]}), 400
+
+    file = request.files["file"]
+    if not file.filename:
+        return jsonify({"status": "error", "errors": ["文件名为空"]}), 400
+
+    orig_name = file.filename
+    ext = orig_name.rsplit(".", 1)[-1].lower() if "." in orig_name else ""
+    if ext not in ("png", "jpg", "jpeg", "gif", "webp"):
+        return jsonify({"status": "error", "errors": [f"不支持的图片格式: .{ext}"]}), 400
+
+    # 同名处理：如果已存在则加后缀
+    save_name = orig_name
+    save_path = os.path.join(img_dir, save_name)
+    counter = 1
+    while os.path.exists(save_path):
+        stem = orig_name.rsplit(".", 1)[0]
+        save_name = f"{stem}_{counter}.{ext}"
+        save_path = os.path.join(img_dir, save_name)
+        counter += 1
+
+    file.save(save_path)
+    logger.info(f"图片已上传: {save_name}")
+
+    return jsonify({"status": "ok", "filename": save_name})
+
+
+@app.route("/api/images/<filename>")
+def api_serve_image(filename):
+    """提供 dashboard 图片的访问。"""
+    img_dir = os.path.join(BASE_DIR, "dashboard")
+    return send_from_directory(img_dir, filename)
 
 
 @app.route("/api/status")

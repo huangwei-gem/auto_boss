@@ -6,10 +6,13 @@ Boss直聘自动投递核心逻辑
 - 反爬策略（随机间隔、User-Agent）
 - 去重管理（持久化已投递记录）
 - 重试与容错
+- 多浏览器实例支持（每个 BotCore 独立端口 + 用户目录）
 """
 import json
 import os
 import random
+import socket
+import tempfile
 import time
 import threading
 from functools import wraps
@@ -56,6 +59,39 @@ RETRY_BASE_DELAY = 2.0  # seconds
 # 操作频率限制
 MAX_APPLIES_PER_HOUR = 30
 MAX_APPLIES_PER_DAY = 100
+
+# ─────────────────────────────────────────────
+# 多浏览器实例 —— 端口分配器
+# ─────────────────────────────────────────────
+
+_PORT_LOCK = threading.Lock()
+_PORT_BASE = 9100
+_PORT_USED: set[int] = set()
+
+
+def _find_free_port() -> int:
+    """从 _PORT_BASE 开始找一个未被占用的端口并标记为已使用。"""
+    with _PORT_LOCK:
+        port = _PORT_BASE
+        while port in _PORT_USED:
+            port += 1
+        # 再次确认操作系统也确实空闲
+        while True:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                try:
+                    s.bind(("127.0.0.1", port))
+                    _PORT_USED.add(port)
+                    return port
+                except OSError:
+                    port += 1
+                    while port in _PORT_USED:
+                        port += 1
+
+
+def _release_port(port: int) -> None:
+    """释放端口（BotCore 结束时调用）。"""
+    with _PORT_LOCK:
+        _PORT_USED.discard(port)
 
 # ─────────────────────────────────────────────
 # 重试装饰器
@@ -125,6 +161,9 @@ class BotCore:
         self.max_applies_per_day = config.get("rate_limit", {}).get("max_applies_per_day", MAX_APPLIES_PER_DAY)
         self.screenshot_enabled = config.get("screenshot", {}).get("enabled", True)
         self.screenshot_interval = config.get("screenshot", {}).get("interval", 3.0)
+        # ── 多浏览器实例：每个 BotCore 分配独立端口与用户目录 ──
+        self._port: int | None = None
+        self._user_data_tmp: str | None = None
 
     # ── helpers ──
 
@@ -221,22 +260,34 @@ class BotCore:
         self._log("INFO", f"已加载 {len(self._sent_jobs)} 条历史投递记录")
 
         try:
-            # ── 浏览器配置 ──
+            # ── 浏览器配置（多实例：独立端口 + 独立用户目录） ──
+            self._port = _find_free_port()
+            # 如果用户没有显式指定 user_data_dir，创建临时目录
+            if self.user_data_dir:
+                user_data = self.user_data_dir
+            else:
+                self._user_data_tmp = tempfile.mkdtemp(prefix="boss_bot_")
+                user_data = self._user_data_tmp
+
             co = ChromiumOptions()
             if self.headless:
                 co.set_argument("--headless=new")
             co.set_argument(f"--window-size={self.window_width},{self.window_height}")
             if self.browser_path:
                 co.set_browser_path(self.browser_path)
-            if self.user_data_dir:
-                co.set_argument(f"--user-data-dir={self.user_data_dir}")
+            # ★ 关键：每个实例独立端口 + 独立用户目录
+            co.set_local_port(self._port)
+            co.set_user_data_path(user_data)
 
             ua = self.custom_ua or self._random_ua()
             co.set_user_agent(ua)
 
+            self._log("INFO", f"启动浏览器（端口={self._port}, 用户目录={user_data}, "
+                              f"{'无头' if self.headless else '可见'}模式, "
+                              f"{self.window_width}x{self.window_height}）")
+
             self.dp = ChromiumPage(addr_or_opts=co)
             self.dp.set.timeouts(self.page_load_timeout, self.operation_timeout)
-            self._log("INFO", f"浏览器已启动（{'无头' if self.headless else '可见'}模式，{self.window_width}x{self.window_height}）")
 
             self._step_login()
             if not self.running or not self._is_logged_in:
@@ -260,6 +311,15 @@ class BotCore:
             if self.dp:
                 try:
                     self.dp.quit()
+                except Exception:
+                    pass
+            # 释放端口 & 清理临时用户目录
+            if self._port is not None:
+                _release_port(self._port)
+            if self._user_data_tmp and os.path.exists(self._user_data_tmp):
+                try:
+                    import shutil
+                    shutil.rmtree(self._user_data_tmp, ignore_errors=True)
                 except Exception:
                     pass
 

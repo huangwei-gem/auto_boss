@@ -53,3 +53,7 @@ ref/
 dist/
 build/
 *.spec
+
+# Session-local notes & test scripts
+*_TODO.md
+_test_*.py

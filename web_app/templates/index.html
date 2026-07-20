@@ -215,7 +215,11 @@ body{
       <div id="imageChips" class="chips" style="margin-bottom:6px;"></div>
       <div class="flex gap-4">
         <select id="imageSelector" class="form-select" style="font-size:11px;"><option value="">— 选择 —</option></select>
-        <button class="btn btn-sm" onclick="addSelectedImage()">+</button>
+        <button class="btn btn-sm" onclick="addSelectedImage()" title="添加选中图片">+</button>
+        <label class="btn btn-sm" style="cursor:pointer;" title="上传新图片">
+          &#x1F4C1; 上传
+          <input type="file" id="uploadImageInput" accept="image/png,image/jpeg,image/gif,image/webp" style="display:none;" onchange="uploadImage(this)">
+        </label>
       </div>
 
       <!-- 岗位列表 -->
@@ -691,6 +695,32 @@ function addSelectedImage() {
   if (!a.image_files) a.image_files = [];
   if (!a.image_files.includes(name)) { a.image_files.push(name); renderImageChips(); }
   sel.value = '';
+}
+
+async function uploadImage(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const formData = new FormData();
+  formData.append('file', file);
+  try {
+    const res = await fetch('/api/images/upload', { method:'POST', body:formData });
+    const data = await res.json();
+    if (data.status === 'ok') {
+      addLog('SUCCESS', '图片上传成功: ' + data.filename);
+      // 刷新图片列表并自动选中新上传的
+      await loadImages();
+      const a = config.accounts[activeAccountIdx];
+      if (a && !a.image_files.includes(data.filename)) {
+        a.image_files.push(data.filename);
+        renderImageChips();
+      }
+    } else {
+      addLog('ERROR', '上传失败: ' + (data.errors||[]).join(', '));
+    }
+  } catch(e) {
+    addLog('ERROR', '上传异常: ' + e.message);
+  }
+  input.value = '';
 }
 
 // ═══ 操作 ═══
