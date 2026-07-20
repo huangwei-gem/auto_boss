@@ -12,6 +12,7 @@ import sys
 import threading
 import base64
 import time
+import random
 from typing import Optional
 
 from flask import Flask, render_template, request, jsonify
@@ -66,35 +67,41 @@ logger = logging.getLogger("boss-web")
 # ═══════════════════════════════════════════════════════════
 
 class TaskScheduler:
-    """串行执行任务。同账号下共用一个 BotCore（一个浏览器），
-    等一个岗位搜完投递完，再搜下一个。不同账号则各开一个浏览器。"""
+    """并发执行所有任务，每个任务独享一个 BotCore（独立浏览器实例）。
+    
+    适合不同账号、不同岗位的场景。"""
 
     def __init__(self, tasks: list[dict], sid: str):
         self.tasks = tasks
         self.sid = sid
         self._stop = threading.Event()
-        self._runner: BotRunner | None = None
+        self._runners: list[BotRunner] = []
 
     def log(self, msg: str):
         socketio.emit("bot_log", {"message": msg}, to=self.sid)
 
     def confirm_login(self) -> None:
-        if self._runner and self._runner.bot:
-            self._runner.bot.confirm_login()
+        """将所有 runner 的 confirm_login 代理到前台。"""
+        for runner in self._runners:
+            if runner and runner.bot:
+                runner.bot.confirm_login()
 
     def check_login_status(self) -> bool:
-        if self._runner and self._runner.bot and self._runner.bot.check_login_status():
-            return True
+        """检查任一 runner 的登录状态。"""
+        for runner in self._runners:
+            if runner and runner.bot and runner.bot.check_login_status():
+                return True
         return False
 
     def stop(self):
         self._stop.set()
-        if self._runner:
-            self._runner.stop()
+        for runner in self._runners:
+            runner.stop()
 
     def run(self):
+        """并发启动所有任务，每个独享一个 BotCore。"""
         total = len(self.tasks)
-        self.log(f"[SCHEDULER] 启动 {total} 个任务（串行模式）")
+        self.log(f"[SCHEDULER] 并发启动 {total} 个任务...")
 
         socketio.emit("scheduler_status", {
             "running": True,
@@ -103,19 +110,24 @@ class TaskScheduler:
             "current": None,
         }, to=self.sid)
 
-        current_runner: BotRunner | None = None
-
+        threads = []
         for idx, task in enumerate(self.tasks):
             if self._stop.is_set():
                 break
 
-            # 停止旧的 runner（切换任务前清理）
-            if current_runner:
-                current_runner.stop()
-                current_runner = None
+            # 错峰启动：每个实例间隔 30~60 秒，避免多个 Chrome 同时访问 Boss 被检测
+            if idx > 0:
+                stagger = random.randint(30, 60)
+                self.log(f"[SCHEDULER] ⏱ 等待 {stagger} 秒后启动下一个任务（错峰）...")
+                for _ in range(stagger):
+                    if self._stop.is_set():
+                        break
+                    time.sleep(1)
+
+            if self._stop.is_set():
+                break
 
             label = f"{task['account_name']} / {task['query']}({task['city']})"
-            self.log(f"[SCHEDULER] ⏳ 开始 [{idx+1}/{total}] {label}")
 
             bot_config = {
                 "city": task["city"],
@@ -138,21 +150,19 @@ class TaskScheduler:
             }
 
             runner = BotRunner(bot_config, self.sid, label)
-            self._runner = runner
-            current_runner = runner
-            runner.run()  # 串行：等这一个跑完才继续
+            self._runners.append(runner)
 
-            # 更新进度
-            socketio.emit("scheduler_status", {
-                "running": not self._stop.is_set(),
-                "total": total,
-                "completed": idx + 1,
-                "current": label if not self._stop.is_set() else None,
-            }, to=self.sid)
+            t = threading.Thread(target=runner.run, daemon=True)
+            threads.append(t)
+            t.start()
 
-        self._runner = None
+            self.log(f"[SCHEDULER] ✓ 已启动 [{idx+1}/{total}] {label}")
 
-        completed = total if not self._stop.is_set() else idx
+        # 等待所有线程完成
+        for t in threads:
+            t.join()
+
+        completed = len([r for r in self._runners if r.done])
         self.log(f"\n[SCHEDULER] 全部完成！{completed}/{total} 个任务")
         socketio.emit("scheduler_status", {
             "running": False,
