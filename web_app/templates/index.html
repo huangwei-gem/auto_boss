@@ -121,11 +121,19 @@ body{
 .chip-remove:hover{opacity:1;color:var(--red)}
 
 /* ── Status bar ── */
-.status-bar{display:flex;align-items:center;justify-content:space-between;padding:8px 14px;border-bottom:1px solid var(--border-light);flex-shrink:0;background:var(--card)}
-.stats{display:flex;gap:20px}
-.stat{text-align:center}
-.stat-value{font-size:18px;font-weight:600;letter-spacing:-.02em;line-height:1.2}
-.stat-label{font-size:9px;color:var(--text-dim);text-transform:uppercase;letter-spacing:.08em}
+.status-bar{display:flex;align-items:center;gap:12px;padding:10px 14px;border-bottom:1px solid var(--border-light);flex-shrink:0;background:var(--card)}
+.status-bar-left{flex:1;min-width:0}
+.status-bar-right{display:flex;gap:16px;flex-shrink:0}
+
+/* ── Metric cards ── */
+.metrics{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:8px;padding:10px 12px;flex-shrink:0;background:var(--card);border-bottom:1px solid var(--border-light)}
+.metric-card{background:var(--surface);border:1px solid var(--border-light);border-radius:var(--r-lg);padding:12px 14px;transition:border .2s}
+.metric-card:hover{border-color:var(--accent-dim)}
+.metric-label{font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--text-dim);margin-bottom:2px}
+.metric-value{font-size:22px;font-weight:600;letter-spacing:-.03em;line-height:1.2}
+.metric-sub{font-size:11px;color:var(--text-muted);margin-top:2px}
+.metric-bar{height:3px;border-radius:2px;background:var(--border-light);margin-top:8px;overflow:hidden}
+.metric-bar-fill{height:100%;border-radius:2px;transition:width .5s;background:var(--accent)}
 
 /* ── Log area ── */
 .log-area{height:200px;min-height:120px;overflow-y:auto;font-family:var(--font-mono);font-size:11px;line-height:1.7;padding:8px 12px;background:var(--card);border-top:1px solid var(--border-light);flex-shrink:0}
@@ -330,34 +338,59 @@ body{
 
   <!-- ══ RIGHT PANEL ══ -->
   <div class="right-panel">
+    <!-- 顶部状态栏 -->
     <div class="status-bar">
-      <div class="flex gap-8" style="align-items:center;">
-        <span id="currentTaskLabel" style="font-size:12px;color:var(--text-muted);"></span>
+      <div class="status-bar-left">
+        <div style="font-size:11px;color:var(--text-dim);text-transform:uppercase;letter-spacing:.06em;margin-bottom:2px;">当前任务</div>
+        <div id="currentTaskLabel" style="font-size:13px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">—</div>
       </div>
-      <div class="stats">
-        <div class="stat"><div id="statTotal" class="stat-value" style="color:var(--text-muted);">0</div><div class="stat-label">浏览</div></div>
-        <div class="stat"><div id="statApplied" class="stat-value" style="color:var(--green);">0</div><div class="stat-label">投递</div></div>
-        <div class="stat"><div id="statSkipped" class="stat-value" style="color:var(--amber);">0</div><div class="stat-label">跳过</div></div>
-      </div>
-    </div>
-
-    <!-- 实时卡片 -->
-    <div id="liveCards" style="display:flex;gap:8px;padding:8px 12px;flex-shrink:0;">
-      <div style="flex:1;background:var(--card);border:1px solid var(--border-light);border-radius:var(--r-md);padding:10px;">
-        <div style="font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--text-dim);">当前任务</div>
-        <div id="liveTask" style="font-size:14px;font-weight:500;margin-top:4px;">—</div>
-      </div>
-      <div style="flex:1;background:var(--card);border:1px solid var(--border-light);border-radius:var(--r-md);padding:10px;">
-        <div style="font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--text-dim);">运行状态</div>
-        <div id="liveStatus" style="font-size:14px;font-weight:500;margin-top:4px;color:var(--text-muted);">空闲</div>
+      <div class="status-bar-right">
+        <div style="display:flex;align-items:center;gap:6px;">
+          <span id="liveStatusDot" class="status-dot" style="width:8px;height:8px;"></span>
+          <span id="liveStatusText" style="font-size:12px;font-weight:500;color:var(--text-muted);">空闲</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:4px;font-size:11px;color:var(--text-dim);">
+          <span>&#9201;</span><span id="runTime">00:00</span>
+        </div>
       </div>
     </div>
 
-    <!-- 中心区域：日志（取代截图预览） -->
+    <!-- 指标卡片 (4个) -->
+    <div class="metrics">
+      <div class="metric-card">
+        <div class="metric-label">&#128269; 已浏览</div>
+        <div class="metric-value" id="mTotal" style="color:var(--text);">0</div>
+        <div class="metric-sub"><span id="mTotalRate">0</span>/分</div>
+        <div class="metric-bar"><div class="metric-bar-fill" id="mBarBrowse" style="width:0%;background:var(--slate);"></div></div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">&#10004; 已投递</div>
+        <div class="metric-value" id="mApplied" style="color:var(--green);">0</div>
+        <div class="metric-sub">今日共 <span id="mAppliedTotal">0</span> 次</div>
+        <div class="metric-bar"><div class="metric-bar-fill" id="mBarApplied" style="width:0%;background:var(--green);"></div></div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">&#9888; 已跳过</div>
+        <div class="metric-value" id="mSkipped" style="color:var(--amber);">0</div>
+        <div class="metric-sub">重复/不符合条件</div>
+        <div class="metric-bar"><div class="metric-bar-fill" id="mBarSkipped" style="width:0%;background:var(--amber);"></div></div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">&#9203; 剩余</div>
+        <div class="metric-value" id="mRemaining" style="color:var(--accent);">0</div>
+        <div class="metric-sub">今日限额 <span id="mDailyLimit">100</span></div>
+        <div class="metric-bar"><div class="metric-bar-fill" id="mBarRemaining" style="width:100%;background:var(--accent);"></div></div>
+      </div>
+    </div>
+
+    <!-- 中心区域：日志 -->
     <div style="flex:1;display:flex;flex-direction:column;min-height:0;padding:0 12px 8px;">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;flex-shrink:0;">
         <span class="section-label">运行日志</span>
-        <button class="btn btn-sm" onclick="clearLogs()" style="font-size:10px;">清空</button>
+        <div class="flex gap-4">
+          <span style="font-size:10px;color:var(--text-dim);" id="logFileHint"></span>
+          <button class="btn btn-sm" onclick="clearLogs()" style="font-size:10px;">清空</button>
+        </div>
       </div>
       <div id="logArea" class="log-area resizable" style="flex:1;border-radius:var(--r-md);border:1px solid var(--border-light);">
         <div class="log-entry"><span class="log-t">&#9654;</span><span class="log-SYSTEM">就绪</span></div>
@@ -369,7 +402,9 @@ body{
 
 <script>
 const socket = io();
-let stats = { total:0, applied:0, skipped:0 };
+let stats = { total:0, applied:0, skipped:0, remaining:0 };
+let startTime = null;
+let timerInterval = null;
 let config = { accounts:[] };
 let activeAccountIdx = 0;
 let availableImages = [];
@@ -743,9 +778,36 @@ function setControls(running) {
 }
 
 function updateStats() {
-  document.getElementById('statTotal').textContent = stats.total;
-  document.getElementById('statApplied').textContent = stats.applied;
-  document.getElementById('statSkipped').textContent = stats.skipped;
+  // 四个大卡片
+  document.getElementById('mTotal').textContent = stats.total;
+  document.getElementById('mApplied').textContent = stats.applied;
+  document.getElementById('mSkipped').textContent = stats.skipped;
+  const remaining = Math.max(0, stats.remaining !== undefined ? stats.remaining : 0);
+  document.getElementById('mRemaining').textContent = remaining;
+
+  // 进度条
+  const browseTotal = Math.max(stats.total, 1);
+  document.getElementById('mBarBrowse').style.width = Math.min(100, (stats.total / Math.max(stats.total, 50)) * 100) + '%';
+  document.getElementById('mBarApplied').style.width = Math.min(100, (stats.applied / Math.max(stats.applied + stats.skipped + 1, 1)) * 100) + '%';
+  document.getElementById('mBarSkipped').style.width = Math.min(100, (stats.skipped / Math.max(stats.total, 1)) * 100) + '%';
+  const dailyLimit = parseInt(document.getElementById('mDailyLimit').textContent) || 100;
+  document.getElementById('mBarRemaining').style.width = Math.min(100, (remaining / Math.max(dailyLimit, 1)) * 100) + '%';
+}
+
+function startTimer() {
+  if (timerInterval) return;
+  startTime = Date.now();
+  timerInterval = setInterval(() => {
+    if (!startTime) return;
+    const elapsed = Math.floor((Date.now() - startTime) / 1000);
+    const m = String(Math.floor(elapsed / 60)).padStart(2, '0');
+    const s = String(elapsed % 60).padStart(2, '0');
+    document.getElementById('runTime').textContent = m + ':' + s;
+  }, 1000);
+}
+
+function stopTimer() {
+  if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
 }
 
 function clearLogs() {
@@ -777,20 +839,29 @@ socket.on('bot_progress', (d) => {
   if (d.total !== undefined) stats.total = d.total;
   if (d.applied !== undefined) stats.applied = d.applied;
   if (d.skipped !== undefined) stats.skipped = d.skipped;
+  if (d.remaining !== undefined) stats.remaining = d.remaining;
   updateStats();
 });
 socket.on('bot_screenshot', (d) => {
-  // 截图数据保留接收但不显示（后端可关闭）
-  if (d.label) document.getElementById('liveTask').textContent = d.label;
+  if (d.label) document.getElementById('currentTaskLabel').textContent = d.label;
 });
 socket.on('bot_status', (d) => {
   setControls(d.running);
-  if (!d.running) document.getElementById('liveTask').textContent = '—';
+  if (d.running) startTimer(); else { stopTimer(); document.getElementById('currentTaskLabel').textContent = '—'; }
 });
 socket.on('scheduler_status', (d) => {
   setControls(d.running);
-  if (d.current) document.getElementById('liveTask').textContent = d.current.account + ' / ' + d.current.query + '(' + d.current.city + ')';
-  else if (!d.running) document.getElementById('liveTask').textContent = '—';
+  if (d.running) {
+    startTimer();
+    if (d.total) stats.remaining = d.total;
+    if (d.completed) stats.applied = d.completed;
+    updateStats();
+  } else {
+    stopTimer();
+  }
+  if (d.current) document.getElementById('currentTaskLabel').textContent = d.current.account + ' / ' + d.current.query + '(' + d.current.city + ')';
+  else if (!d.running) document.getElementById('currentTaskLabel').textContent = '—';
+  if (d.daily_limit) document.getElementById('mDailyLimit').textContent = d.daily_limit;
 });
 socket.on('login_result', (d) => { if (d.success) addLog('SUCCESS', '已登录'); else addLog('ERROR', '未登录'); });
 

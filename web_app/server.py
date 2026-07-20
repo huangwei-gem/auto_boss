@@ -13,6 +13,7 @@ import threading
 import base64
 import time
 import random
+from datetime import datetime
 from typing import Optional
 
 from flask import Flask, render_template, request, jsonify, send_from_directory
@@ -25,6 +26,30 @@ CORE_DIR = os.path.join(PROJECT_DIR, "core")
 DATA_DIR = os.path.join(PROJECT_DIR, "data")
 sys.path.insert(0, CORE_DIR)
 os.chdir(BASE_DIR)
+
+# ── 日志目录 ──
+LOG_DIR = os.path.join(PROJECT_DIR, "logs")
+os.makedirs(LOG_DIR, exist_ok=True)
+_log_file = os.path.join(LOG_DIR, f"bot_{datetime.now().strftime('%Y%m%d')}.log")
+
+# ── 文件日志写入 ──
+_log_lock = threading.Lock()
+
+def _write_log_to_file(message: str) -> None:
+    """将日志行追加写入当天的日志文件。"""
+    try:
+        with _log_lock:
+            with open(_log_file, "a", encoding="utf-8") as f:
+                ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                f.write(f"[{ts}] {message}\n")
+    except OSError:
+        pass  # 写入失败不影响正常运行
+
+
+def _emit_log(room, message: str) -> None:
+    """发送日志到前端 + 写入本地文件。"""
+    _write_log_to_file(message)
+    socketio.emit("bot_log", {"message": message}, to=room)
 
 # 复制配置和数据文件到 web 工作目录（如果不存在）
 import shutil
@@ -76,7 +101,7 @@ class TaskScheduler:
         self._current_runner: BotRunner | None = None
 
     def log(self, msg: str):
-        socketio.emit("bot_log", {"message": msg}, to=self.sid)
+        _emit_log(self.sid, msg)
 
     def confirm_login(self) -> None:
         """将 confirm_login 代理到当前 runner。"""
@@ -124,6 +149,7 @@ class TaskScheduler:
                 "total": total,
                 "completed": completed,
                 "current": {"account": task["account_name"], "query": task["query"], "city": task["city"]},
+                "daily_limit": _config.get("rate_limit", {}).get("max_applies_per_day", 100),
             }, to=self.sid)
 
             self.log(f"[SCHEDULER] 正在执行 [{idx+1}/{total}] {label}")
@@ -416,21 +442,21 @@ def on_start_all(data=None):
 
     # 如果有旧的调度器线程卡住，先尝试停止
     if _scheduler_thread and _scheduler_thread.is_alive():
-        emit("bot_log", {"message": "[SYSTEM] 检测到旧调度器仍在运行，正在停止旧调度器..."})
+        _emit_log(request.sid, "[SYSTEM] 检测到旧调度器仍在运行，正在停止旧调度器...")
         if _scheduler_instance:
             _scheduler_instance.stop()
         _scheduler_thread.join(timeout=10)
         _scheduler_thread = None
         _scheduler_instance = None
-        emit("bot_log", {"message": "[SYSTEM] 旧调度器已停止"})
+        _emit_log(request.sid, "[SYSTEM] 旧调度器已停止")
 
     # 展开任务
     tasks = flatten_jobs_for_run(_config)
     if not tasks:
-        emit("bot_log", {"message": "[SYSTEM] 没有启用的任务（请检查账号和岗位的 enabled 状态）"})
+        _emit_log(request.sid, "[SYSTEM] 没有启用的任务（请检查账号和岗位的 enabled 状态）")
         return
 
-    emit("bot_log", {"message": f"[SYSTEM] 调度器启动，共 {len(tasks)} 个任务"})
+    _emit_log(request.sid, f"[SYSTEM] 调度器启动，共 {len(tasks)} 个任务")
     emit("bot_status", {"running": True})
 
     _scheduler_stop.clear()
@@ -456,9 +482,9 @@ def on_stop_all():
     # 停止调度器实例（会停止所有 BotRunner）
     if _scheduler_instance:
         _scheduler_instance.stop()
-        emit("bot_log", {"message": "[SYSTEM] 正在停止调度器..."})
+        _emit_log(request.sid, "[SYSTEM] 正在停止调度器...")
     else:
-        emit("bot_log", {"message": "[SYSTEM] 调度器未运行"})
+        _emit_log(request.sid, "[SYSTEM] 调度器未运行")
     emit("bot_status", {"running": False})
     emit("scheduler_status", {"running": False})
 
@@ -473,16 +499,16 @@ def on_start_bot(data):
     global _bot, _bot_thread, _scheduler_thread
 
     if _bot_thread and _bot_thread.is_alive():
-        emit("bot_log", {"message": "[SYSTEM] Bot 已在运行中，先停止旧的..."})
+        _emit_log(request.sid, "[SYSTEM] Bot 已在运行中，先停止旧的...")
         _bot_thread = None
 
     if _scheduler_thread and _scheduler_thread.is_alive():
-        emit("bot_log", {"message": "[SYSTEM] 调度器正在运行，请先停止调度器"})
+        _emit_log(request.sid, "[SYSTEM] 调度器正在运行，请先停止调度器")
         return
 
     tasks = flatten_jobs_for_run(_config)
     if not tasks:
-        emit("bot_log", {"message": "[SYSTEM] 没有启用的任务"})
+        _emit_log(request.sid, "[SYSTEM] 没有启用的任务")
         return
 
     # 选择任务
@@ -490,7 +516,7 @@ def on_start_bot(data):
     if data and "task_index" in data:
         task_idx = data["task_index"]
     if task_idx >= len(tasks):
-        emit("bot_log", {"message": f"[SYSTEM] 任务索引 {task_idx} 超出范围"})
+        _emit_log(request.sid, f"[SYSTEM] 任务索引 {task_idx} 超出范围")
         return
 
     task = tasks[task_idx]
@@ -515,7 +541,7 @@ def on_start_bot(data):
     _bot = runner
 
     emit("bot_status", {"running": True})
-    emit("bot_log", {"message": f"[SYSTEM] Bot 启动: {label}"})
+    _emit_log(request.sid, f"[SYSTEM] Bot 启动: {label}")
 
     _bot_thread = threading.Thread(target=runner.run, daemon=True)
     _bot_thread.start()
@@ -526,9 +552,9 @@ def on_stop_bot():
     global _bot
     if _bot:
         _bot.stop()
-        emit("bot_log", {"message": "[SYSTEM] 正在停止 Bot..."})
+        _emit_log(request.sid, "[SYSTEM] 正在停止 Bot...")
     else:
-        emit("bot_log", {"message": "[SYSTEM] Bot 未运行"})
+        _emit_log(request.sid, "[SYSTEM] Bot 未运行")
 
 
 @socketio.on("confirm_login")
@@ -536,9 +562,9 @@ def on_confirm_login():
     global _scheduler_stop, _bot
     if _bot:
         _bot.confirm_login()
-        emit("bot_log", {"message": "[LOGIN] 用户确认已登录，继续执行..."})
+        _emit_log(request.sid, "[LOGIN] 用户确认已登录，继续执行...")
     else:
-        emit("bot_log", {"message": "[LOGIN] Bot 未运行，请先启动"})
+        _emit_log(request.sid, "[LOGIN] Bot 未运行，请先启动")
 
 
 @socketio.on("check_login")
