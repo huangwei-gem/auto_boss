@@ -67,41 +67,37 @@ logger = logging.getLogger("boss-web")
 # ═══════════════════════════════════════════════════════════
 
 class TaskScheduler:
-    """并发执行所有任务，每个任务独享一个 BotCore（独立浏览器实例）。
-    
-    适合不同账号、不同岗位的场景。"""
+    """串行执行所有任务（同一账号共用一个浏览器依次执行）。"""
 
     def __init__(self, tasks: list[dict], sid: str):
         self.tasks = tasks
         self.sid = sid
         self._stop = threading.Event()
-        self._runners: list[BotRunner] = []
+        self._current_runner: BotRunner | None = None
 
     def log(self, msg: str):
         socketio.emit("bot_log", {"message": msg}, to=self.sid)
 
     def confirm_login(self) -> None:
-        """将所有 runner 的 confirm_login 代理到前台。"""
-        for runner in self._runners:
-            if runner and runner.bot:
-                runner.bot.confirm_login()
+        """将 confirm_login 代理到当前 runner。"""
+        if self._current_runner and self._current_runner.bot:
+            self._current_runner.bot.confirm_login()
 
     def check_login_status(self) -> bool:
-        """检查任一 runner 的登录状态。"""
-        for runner in self._runners:
-            if runner and runner.bot and runner.bot.check_login_status():
-                return True
+        """检查当前 runner 的登录状态。"""
+        if self._current_runner and self._current_runner.bot:
+            return self._current_runner.bot.check_login_status()
         return False
 
     def stop(self):
         self._stop.set()
-        for runner in self._runners:
-            runner.stop()
+        if self._current_runner:
+            self._current_runner.stop()
 
     def run(self):
-        """并发启动所有任务，每个独享一个 BotCore。"""
+        """串行执行所有任务，同一账号共用一个浏览器。"""
         total = len(self.tasks)
-        self.log(f"[SCHEDULER] 并发启动 {total} 个任务...")
+        self.log(f"[SCHEDULER] 串行启动 {total} 个任务...")
 
         socketio.emit("scheduler_status", {
             "running": True,
@@ -110,59 +106,32 @@ class TaskScheduler:
             "current": None,
         }, to=self.sid)
 
-        threads = []
+        completed = 0
         for idx, task in enumerate(self.tasks):
-            if self._stop.is_set():
-                break
-
-            # 错峰启动：每个实例间隔 30~60 秒，避免多个 Chrome 同时访问 Boss 被检测
-            if idx > 0:
-                stagger = random.randint(30, 60)
-                self.log(f"[SCHEDULER] ⏱ 等待 {stagger} 秒后启动下一个任务（错峰）...")
-                for _ in range(stagger):
-                    if self._stop.is_set():
-                        break
-                    time.sleep(1)
-
             if self._stop.is_set():
                 break
 
             label = f"{task['account_name']} / {task['query']}({task['city']})"
 
-            bot_config = {
-                "city": task["city"],
-                "job_query": task["query"],
-                "scroll_pages": task["scroll_pages"],
-                "greeting_message": task["greeting_message"],
-                "image_files": task["image_files"],
-                "message_interval_min": task["message_interval_min"],
-                "message_interval_max": task["message_interval_max"],
-                "min_salary": task.get("min_salary", 0),
-                "max_salary": task.get("max_salary", 0),
-                "experience": task.get("experience", ""),
-                "education": task.get("education", ""),
-                "exclude_companies": task.get("exclude_companies", []),
-                "include_keywords": task.get("include_keywords", []),
-                "browser": _config.get("browser", {}),
-                "anti_detection": _config.get("anti_detection", {}),
-                "rate_limit": _config.get("rate_limit", {}),
-                "screenshot": _config.get("screenshot", {}),
-            }
+            # 同一个账号复用同一个 BotCore（浏览器）
+            account_key = task["account_name"]
+            bot_config = self._build_bot_config(task, account_key)
 
-            runner = BotRunner(bot_config, self.sid, label)
-            self._runners.append(runner)
+            self._current_runner = BotRunner(bot_config, self.sid, label)
 
-            t = threading.Thread(target=runner.run, daemon=True)
-            threads.append(t)
-            t.start()
+            socketio.emit("scheduler_status", {
+                "running": True,
+                "total": total,
+                "completed": completed,
+                "current": {"account": task["account_name"], "query": task["query"], "city": task["city"]},
+            }, to=self.sid)
 
-            self.log(f"[SCHEDULER] ✓ 已启动 [{idx+1}/{total}] {label}")
+            self.log(f"[SCHEDULER] 正在执行 [{idx+1}/{total}] {label}")
+            self._current_runner.run()  # 串行：等它跑完再下一个
 
-        # 等待所有线程完成
-        for t in threads:
-            t.join()
+            if self._current_runner.done:
+                completed += 1
 
-        completed = len([r for r in self._runners if r.done])
         self.log(f"\n[SCHEDULER] 全部完成！{completed}/{total} 个任务")
         socketio.emit("scheduler_status", {
             "running": False,
@@ -171,6 +140,28 @@ class TaskScheduler:
             "current": None,
         }, to=self.sid)
         socketio.emit("bot_status", {"running": False}, to=self.sid)
+
+    def _build_bot_config(self, task: dict, account_key: str) -> dict:
+        return {
+            "city": task["city"],
+            "job_query": task["query"],
+            "scroll_pages": task["scroll_pages"],
+            "greeting_message": task["greeting_message"],
+            "image_files": task["image_files"],
+            "message_interval_min": task["message_interval_min"],
+            "message_interval_max": task["message_interval_max"],
+            "min_salary": task.get("min_salary", 0),
+            "max_salary": task.get("max_salary", 0),
+            "experience": task.get("experience", ""),
+            "education": task.get("education", ""),
+            "exclude_companies": task.get("exclude_companies", []),
+            "include_keywords": task.get("include_keywords", []),
+            "browser": _config.get("browser", {}),
+            "anti_detection": _config.get("anti_detection", {}),
+            "rate_limit": _config.get("rate_limit", {}),
+            "screenshot": _config.get("screenshot", {}),
+            "cookie_file": task.get("cookie_file", "zhipin_cookies.json"),
+        }
 
 
 # ═══════════════════════════════════════════════════════════
@@ -516,6 +507,7 @@ def on_start_bot(data):
         "anti_detection": _config.get("anti_detection", {}),
         "rate_limit": _config.get("rate_limit", {}),
         "screenshot": _config.get("screenshot", {}),
+        "cookie_file": task.get("cookie_file", "zhipin_cookies.json"),
     }
 
     label = f"{task['account_name']} / {task['query']}({task['city']})"

@@ -164,6 +164,8 @@ class BotCore:
         # ── 多浏览器实例：每个 BotCore 分配独立端口与用户目录 ──
         self._port: int | None = None
         self._user_data_tmp: str | None = None
+        # ── 每个账号独立的 cookie 文件 ──
+        self._cookie_file: str = config.get("cookie_file", COOKIES_FILE)
 
     # ── helpers ──
 
@@ -200,37 +202,40 @@ class BotCore:
         with open(CHATS_LOG_FILE, "w", encoding="utf-8") as f:
             json.dump(sorted(self._sent_jobs), f, ensure_ascii=False, indent=2)
 
-    # ── Cookie 管理 ──
+    # ── Cookie 管理（每个 BotCore 使用自己的 cookie 文件） ──
 
     def _load_cookies(self) -> bool:
         """加载已保存 Cookie 并注入浏览器，成功返回 True。"""
-        if not os.path.exists(COOKIES_FILE):
+        cookie_path = self._cookie_file
+        if not os.path.exists(cookie_path):
             return False
         try:
-            with open(COOKIES_FILE, "r", encoding="utf-8") as f:
+            with open(cookie_path, "r", encoding="utf-8") as f:
                 cookies = json.load(f)
             if not cookies:
                 return False
             self.dp.set.cookies(cookies)
-            self._log("INFO", f"已加载 {len(cookies)} 条 Cookie")
+            self._log("INFO", f"已加载 {len(cookies)} 条 Cookie（{cookie_path}）")
             return True
         except (json.JSONDecodeError, OSError) as e:
-            self._log("WARN", f"Cookie 加载失败: {e}")
+            self._log("WARN", f"Cookie 加载失败（{cookie_path}）: {e}")
             return False
 
     def _save_cookies(self) -> None:
+        cookie_path = self._cookie_file
         try:
-            with open(COOKIES_FILE, "w", encoding="utf-8") as f:
+            with open(cookie_path, "w", encoding="utf-8") as f:
                 json.dump(self.dp.cookies(), f, ensure_ascii=False, indent=2)
-            self._log("INFO", "Cookie 已保存")
+            self._log("INFO", f"Cookie 已保存（{cookie_path}）")
         except OSError as e:
-            self._log("WARN", f"Cookie 保存失败: {e}")
+            self._log("WARN", f"Cookie 保存失败（{cookie_path}）: {e}")
 
     def _clear_cookies(self) -> None:
         """清除 Cookie 文件（用于登录失效时）。"""
-        if os.path.exists(COOKIES_FILE):
-            os.remove(COOKIES_FILE)
-            self._log("INFO", "Cookie 已清除")
+        cookie_path = self._cookie_file
+        if os.path.exists(cookie_path):
+            os.remove(cookie_path)
+            self._log("INFO", f"Cookie 已清除（{cookie_path}）")
 
     # ── 频率限制 ──
 
