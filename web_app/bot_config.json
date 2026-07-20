@@ -61,6 +61,6 @@
   },
   "screenshot": {
     "enabled": true,
-    "interval": 3
+    "interval": 3.0
   }
 }
