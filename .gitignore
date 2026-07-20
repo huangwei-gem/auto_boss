@@ -17,6 +17,11 @@ build/
 # OS
 .DS_Store
 
+# Editor / IDE
+.claude/
+.idea/
+.vscode/
+
 # QwenPaw runtime / internal directories (not user content)
 sessions/
 missions/
