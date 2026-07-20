@@ -439,7 +439,7 @@ class BotCore:
         packet = self.dp.listen.wait(timeout=15)
         if packet is None:
             self._log("WARN", "获取城市数据超时，尝试备用方案...")
-            # 备用：从页面 DOM 中提取热门城市列表
+            # 备用：从页面 DOM 中提取城市列表
             city_eles = self.dp.eles(".city-list .city-item", timeout=5)
             if city_eles:
                 for ele in city_eles:
@@ -465,16 +465,32 @@ class BotCore:
                 }
         else:
             res = packet.response.body
-            city_list = res.get("zpData", {}).get("hotCityList", [])
-            for city in city_list:
+            zp = res.get("zpData", {})
+
+            # 1) 热门城市
+            for city in zp.get("hotCityList", []):
                 city_dict[city["name"]] = city["code"]
+
+            # 2) 完整城市列表（省→市）
+            for province in zp.get("cityList", []):
+                sub = province.get("subLevelModelList", [])
+                if not sub:
+                    # 直辖市：省即市
+                    city_dict[province["name"]] = province["code"]
+                else:
+                    for city in sub:
+                        city_dict[city["name"]] = city["code"]
+                        # 也收集区/县名（不加区划后缀，直接映射）
+                        # （不覆盖市级 code，区级 code 在搜索时也能用）
+
         self.dp.listen.stop()
 
         self._log("INFO", f"已获取 {len(city_dict)} 个城市数据")
 
         target_city = self.config["city"]
         if target_city not in city_dict:
-            self._log("ERROR", f"城市 '{target_city}' 不在热门城市中，可选: {list(city_dict.keys())[:10]}...")
+            self._log("ERROR", f"城市 '{target_city}' 不在列表中，可选: "
+                              f"{list(city_dict.keys())[:20]}...")
             raise ValueError(f"未知城市: {target_city}")
 
         self.city_code = city_dict[target_city]
