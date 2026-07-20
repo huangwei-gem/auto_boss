@@ -1,47 +1,82 @@
-"""配置管理 — 多岗位多账号版
+"""配置管理 — 多岗位多账号版（全面设置）
 
-新格式：
-{
-  "accounts": [
-    {
-      "name": "主账号",
-      "enabled": true,
-      "cookie_file": "zhipin_cookies.json",
-      "image_files": ["..."],
-      "message_interval_min": 3,
-      "message_interval_max": 8,
-      "jobs": [
-        {
-          "enabled": true,
-          "city": "上海",
-          "query": "数据分析",
-          "scroll_pages": 5,
-          "greeting_message": "您好..."
-        }
-      ]
-    }
-  ]
-}
+完整配置结构：
+
+全局级:
+  browser:
+    headless: false          # 是否无头模式
+    window_width: 1280       # 浏览器窗口宽度
+    window_height: 800       # 浏览器窗口高度
+    executable_path: ""      # 自定义 Chrome 路径（空=自动查找）
+    user_data_dir: ""        # 用户数据目录（空=临时目录）
+  anti_detection:
+    user_agent: ""           # 自定义 UA（空=随机）
+    max_retries: 3
+    retry_base_delay: 2.0
+    operation_timeout: 10    # 元素等待超时（秒）
+    page_load_timeout: 30    # 页面加载超时（秒）
+  rate_limit:
+    max_applies_per_hour: 30
+    max_applies_per_day: 100
+  screenshot:
+    enabled: true            # 是否向前端发送截图（关掉可省资源）
+    interval: 3.0            # 截图间隔（秒）
+
+账号级（每个账号）:
+  name, enabled, cookie_file, image_files,
+  message_interval_min, message_interval_max,
+  jobs: [...]
+
+岗位级（每个岗位）:
+  enabled, city, query, scroll_pages, greeting_message,
+  min_salary: 0              # 最低薪资过滤（0=不限）
+  max_salary: 0              # 最高薪资过滤（0=不限）
+  experience: ""             # 经验要求过滤
+  education: ""              # 学历要求过滤
+  exclude_companies: []      # 排除公司关键词
+  include_keywords: []       # 附加匹配关键词
 """
 import json
 import os
 import copy
 
-# 配置在 web_app 下
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 CONFIG_FILE = os.path.join(BASE_DIR, "bot_config.json")
 
 DEFAULT_CONFIG = {
+    # ── 浏览器设置 ──
+    "browser": {
+        "headless": False,
+        "window_width": 1280,
+        "window_height": 800,
+        "executable_path": "",
+        "user_data_dir": "",
+    },
+    # ── 反检测设置 ──
+    "anti_detection": {
+        "user_agent": "",
+        "max_retries": 3,
+        "retry_base_delay": 2.0,
+        "operation_timeout": 10,
+        "page_load_timeout": 30,
+    },
+    # ── 频率限制 ──
+    "rate_limit": {
+        "max_applies_per_hour": 30,
+        "max_applies_per_day": 100,
+    },
+    # ── 截图设置 ──
+    "screenshot": {
+        "enabled": True,
+        "interval": 3.0,
+    },
+    # ── 账号列表 ──
     "accounts": [
         {
             "name": "主账号",
             "enabled": True,
             "cookie_file": "zhipin_cookies.json",
-            "image_files": [
-                "dashboard/看板1.png",
-                "dashboard/看板2.png",
-                "dashboard/看板3.png",
-            ],
+            "image_files": [],
             "message_interval_min": 3,
             "message_interval_max": 8,
             "jobs": [
@@ -56,37 +91,31 @@ DEFAULT_CONFIG = {
                         "具备数据思维。做事严谨细心，学习能力强，愿意踏实积累。"
                         "十分认可贵公司，希望能获得面试机会。"
                     ),
+                    "min_salary": 0,
+                    "max_salary": 0,
+                    "experience": "",
+                    "education": "",
+                    "exclude_companies": [],
+                    "include_keywords": [],
                 }
             ],
         }
-    ]
+    ],
 }
 
 
 def _migrate_old_config(old: dict) -> dict:
-    """将旧版单岗位配置迁移到新版多账号格式。"""
-    new = {"accounts": []}
-    job = {
-        "enabled": True,
-        "city": old.get("city", "上海"),
-        "query": old.get("job_query", "数据分析"),
-        "scroll_pages": old.get("scroll_pages", 5),
-        "greeting_message": old.get("greeting_message", ""),
-    }
-    account = {
-        "name": "主账号",
-        "enabled": True,
-        "cookie_file": "zhipin_cookies.json",
-        "image_files": old.get("image_files", [
-            "dashboard/看板1.png",
-            "dashboard/看板2.png",
-            "dashboard/看板3.png",
-        ]),
-        "message_interval_min": old.get("message_interval_min", 3),
-        "message_interval_max": old.get("message_interval_max", 8),
-        "jobs": [job],
-    }
-    new["accounts"].append(account)
+    """将旧版单岗位配置迁移到新版格式。"""
+    new = copy.deepcopy(DEFAULT_CONFIG)
+    job = new["accounts"][0]["jobs"][0]
+    job["city"] = old.get("city", "上海")
+    job["query"] = old.get("job_query", "数据分析")
+    job["scroll_pages"] = old.get("scroll_pages", 5)
+    job["greeting_message"] = old.get("greeting_message", "")
+    acct = new["accounts"][0]
+    acct["image_files"] = old.get("image_files", [])
+    acct["message_interval_min"] = old.get("message_interval_min", 3)
+    acct["message_interval_max"] = old.get("message_interval_max", 8)
     return new
 
 
@@ -99,7 +128,6 @@ def load_config() -> dict:
             # 检测旧版格式（有 job_query 但没有 accounts）
             if "job_query" in saved and "accounts" not in saved:
                 saved = _migrate_old_config(saved)
-                # 保存迁移后的配置
                 save_config(saved)
             return _deep_defaults(saved)
         except (json.JSONDecodeError, OSError):
@@ -108,32 +136,37 @@ def load_config() -> dict:
 
 
 def _deep_defaults(cfg: dict) -> dict:
-    """用默认值补充缺失的嵌套字段。"""
+    """用默认值补充缺失的嵌套字段（保留顶层全局设置）。"""
     result = copy.deepcopy(DEFAULT_CONFIG)
 
-    if "accounts" not in cfg or not cfg["accounts"]:
-        return result
+    # 合并全局设置
+    for section in ("browser", "anti_detection", "rate_limit", "screenshot"):
+        if section in cfg and isinstance(cfg[section], dict):
+            result[section].update(cfg[section])
 
-    result["accounts"] = []
-    for i, acct in enumerate(cfg["accounts"]):
-        default_acct = copy.deepcopy(DEFAULT_CONFIG["accounts"][0])
-        for k in default_acct:
-            if k == "jobs":
-                continue
-            if k in acct:
-                default_acct[k] = acct[k]
-        # 合并 jobs
-        if "jobs" in acct and acct["jobs"]:
-            default_job = copy.deepcopy(DEFAULT_CONFIG["accounts"][0]["jobs"][0])
-            merged_jobs = []
-            for j, job in enumerate(acct["jobs"]):
-                mj = copy.deepcopy(default_job)
-                for k in mj:
-                    if k in job:
-                        mj[k] = job[k]
-                merged_jobs.append(mj)
-            default_acct["jobs"] = merged_jobs
-        result["accounts"].append(default_acct)
+    # 合并 accounts
+    if "accounts" in cfg and cfg["accounts"]:
+        result["accounts"] = []
+        for i, acct in enumerate(cfg["accounts"]):
+            default_acct = copy.deepcopy(DEFAULT_CONFIG["accounts"][0])
+            # 复制顶层账号字段
+            for k in default_acct:
+                if k == "jobs":
+                    continue
+                if k in acct:
+                    default_acct[k] = acct[k]
+            # 合并 jobs
+            if "jobs" in acct and acct["jobs"]:
+                default_job = copy.deepcopy(DEFAULT_CONFIG["accounts"][0]["jobs"][0])
+                merged_jobs = []
+                for job in acct["jobs"]:
+                    mj = copy.deepcopy(default_job)
+                    for k in mj:
+                        if k in job:
+                            mj[k] = job[k]
+                    merged_jobs.append(mj)
+                default_acct["jobs"] = merged_jobs
+            result["accounts"].append(default_acct)
 
     return result
 
@@ -172,11 +205,18 @@ def validate_config(cfg: dict) -> list[str]:
         if max_iv < min_iv:
             errors.append(f"账号「{acct.get('name', f'账号{i+1}')}」：最大发送间隔不能小于最小发送间隔")
 
+    # 全局校验
+    rl = cfg.get("rate_limit", {})
+    if rl.get("max_applies_per_hour", 30) < 1:
+        errors.append("每小时最多投递数不能小于 1")
+    if rl.get("max_applies_per_day", 100) < 1:
+        errors.append("每天最多投递数不能小于 1")
+
     return errors
 
 
 def flatten_jobs_for_run(cfg: dict) -> list[dict]:
-    """展开为扁平的任务列表：[{account_index, job_index, account_name, ...}, ...]"""
+    """展开为扁平的任务列表，携带所有全局和账号级参数。"""
     tasks = []
     for ai, acct in enumerate(cfg.get("accounts", [])):
         if not acct.get("enabled", True):
@@ -196,5 +236,17 @@ def flatten_jobs_for_run(cfg: dict) -> list[dict]:
                 "image_files": acct.get("image_files", []),
                 "message_interval_min": acct.get("message_interval_min", 3),
                 "message_interval_max": acct.get("message_interval_max", 8),
+                # 岗位额外过滤条件
+                "min_salary": job.get("min_salary", 0),
+                "max_salary": job.get("max_salary", 0),
+                "experience": job.get("experience", ""),
+                "education": job.get("education", ""),
+                "exclude_companies": job.get("exclude_companies", []),
+                "include_keywords": job.get("include_keywords", []),
+                # 全局设置（每个任务携带一份）
+                "browser": cfg.get("browser", DEFAULT_CONFIG["browser"]),
+                "anti_detection": cfg.get("anti_detection", DEFAULT_CONFIG["anti_detection"]),
+                "rate_limit": cfg.get("rate_limit", DEFAULT_CONFIG["rate_limit"]),
+                "screenshot": cfg.get("screenshot", DEFAULT_CONFIG["screenshot"]),
             })
     return tasks

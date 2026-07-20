@@ -6,29 +6,23 @@
 <title>Boss 直聘 · 自动投递</title>
 <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
 <style>
-/* ── Reset ── */
-*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
-
-/* ── Taste-Skill v2 Design System ── */
+/* ── taste-skill v2 Design System ── */
 :root{
   --bg:#f4f4ef;--card:#ffffff;--card-hover:#fafaf6;--surface:#eeeee8;--surface2:#e6e6df;
   --border:#d8d8d0;--border-light:#eaeae4;
   --text:#1a1a17;--text-muted:#6b6b63;--text-dim:#9a9a91;--text-inverse:#ffffff;
   --accent:#4a4d7a;--accent-hover:#3b3e68;--accent-light:#e8e8ee;--accent-dim:#9a9bb8;
-  --green:#2b7a4e;--red:#b33a3a;--amber:#a67c0e;--slate:#7a7a72;
+  --green:#2b7a4e;--red:#b33a3a;--amber:#a67c0e;--slate:#7a7a72;--blue:#3a7bb3;
   --r-sm:6px;--r-md:8px;--r-lg:12px;--r-xl:16px;
   --font-sans:'Geist','Plus Jakarta Sans','Segoe UI',system-ui,-apple-system,sans-serif;
   --font-mono:'JetBrains Mono','Consolas',monospace;
 }
-
 html{height:100%}
 body{
   background:var(--bg);color:var(--text);font-family:var(--font-sans);
   height:100%;overflow:hidden;font-size:14px;line-height:1.5;
   -webkit-font-smoothing:antialiased;
 }
-
-/* ── Scrollbar ── */
 ::-webkit-scrollbar{width:4px}
 ::-webkit-scrollbar-track{background:transparent}
 ::-webkit-scrollbar-thumb{background:var(--border);border-radius:4px}
@@ -36,7 +30,7 @@ body{
 
 /* ── Layout ── */
 .app{display:flex;height:100dvh}
-.left-panel{width:440px;min-width:380px;display:flex;flex-direction:column;border-right:1px solid var(--border);background:var(--card)}
+.left-panel{width:520px;min-width:460px;display:flex;flex-direction:column;border-right:1px solid var(--border);background:var(--card)}
 .right-panel{flex:1;display:flex;flex-direction:column;min-width:0;background:var(--bg)}
 
 /* ── Top bar ── */
@@ -55,19 +49,27 @@ body{
 
 /* ── Tabs ── */
 .tabs{display:flex;gap:4px;padding:8px 12px;border-bottom:1px solid var(--border-light);overflow-x:auto;flex-shrink:0}
-.tabs::-webkit-scrollbar{display:none}
 .tab{padding:4px 10px;border-radius:999px;font-size:12px;font-weight:500;background:transparent;border:1px solid transparent;color:var(--text-dim);cursor:pointer;transition:all .2s;white-space:nowrap}
 .tab:hover{background:var(--surface);color:var(--text)}
 .tab.active{background:var(--accent-light);border-color:var(--accent-dim);color:var(--accent)}
 .tab .badge{display:inline-flex;align-items:center;justify-content:center;min-width:16px;height:16px;border-radius:50%;font-size:9px;background:var(--surface2);margin-left:5px;padding:0 4px;color:var(--text-muted)}
 .tab.active .badge{background:var(--accent);color:var(--text-inverse)}
 
-/* ── Left panel content ── */
+/* ── Sub tabs (账号/全局) ── */
+.sub-tabs{display:flex;gap:0;padding:0 12px;border-bottom:1px solid var(--border-light);flex-shrink:0}
+.sub-tab{padding:6px 14px;font-size:12px;font-weight:500;color:var(--text-dim);cursor:pointer;border-bottom:2px solid transparent;transition:all .2s}
+.sub-tab:hover{color:var(--text)}
+.sub-tab.active{color:var(--accent);border-bottom-color:var(--accent)}
+
+/* ── Scroll area ── */
 .scroll-area{flex:1;overflow-y:auto;padding:12px}
+.scroll-area.compact{padding:8px 12px}
 
 /* ── Form ── */
 .form-group{margin-bottom:10px}
+.form-group-inline{display:flex;gap:8px;align-items:center;margin-bottom:10px}
 .form-label{display:block;font-size:12px;font-weight:400;color:var(--text-muted);margin-bottom:4px}
+.form-label-inline{font-size:12px;font-weight:400;color:var(--text-muted);flex-shrink:0}
 .form-input,.form-textarea,.form-select{
   width:100%;background:var(--card);border:1px solid var(--border-light);border-radius:var(--r-sm);
   padding:6px 10px;color:var(--text);font-family:var(--font-sans);font-size:13px;
@@ -77,12 +79,21 @@ body{
 .form-textarea{resize:vertical;min-height:52px;line-height:1.6;font-size:12px}
 .form-row{display:flex;gap:8px}
 .form-row>*{flex:1;min-width:0}
+.form-number{width:72px}
 
 /* ── Toggle ── */
 .toggle{position:relative;width:26px;height:14px;flex-shrink:0;cursor:pointer;border-radius:999px;background:var(--border);transition:background .2s}
 .toggle.on{background:var(--green)}
 .toggle::after{content:'';position:absolute;top:2px;left:2px;width:10px;height:10px;border-radius:50%;background:#fff;transition:transform .2s}
 .toggle.on::after{transform:translateX(12px)}
+
+/* ── Collapse ── */
+.collapse-header{display:flex;align-items:center;gap:6px;padding:6px 0;cursor:pointer;-webkit-user-select:none;user-select:none}
+.collapse-header:hover{color:var(--accent)}
+.collapse-arrow{font-size:10px;transition:transform .2s;color:var(--text-dim)}
+.collapse-arrow.open{transform:rotate(90deg)}
+.collapse-body{padding-left:8px;border-left:2px solid var(--border-light);margin-bottom:6px;display:none}
+.collapse-body.open{display:block}
 
 /* ── Job card ── */
 .job-card{background:var(--surface);border:1px solid var(--border-light);border-radius:var(--r-md);padding:10px;margin-bottom:6px;transition:border .2s}
@@ -116,13 +127,9 @@ body{
 .stat-value{font-size:18px;font-weight:600;letter-spacing:-.02em;line-height:1.2}
 .stat-label{font-size:9px;color:var(--text-dim);text-transform:uppercase;letter-spacing:.08em}
 
-/* ── Screenshot area ── */
-.preview-box{flex:1;background:var(--surface);margin:8px;border-radius:var(--r-lg);overflow:hidden;display:flex;align-items:center;justify-content:center;min-height:0;position:relative;border:1px solid var(--border-light)}
-.preview-box img{max-width:100%;max-height:100%;object-fit:contain;display:block}
-.preview-placeholder{color:var(--text-dim);font-size:13px;font-weight:300;text-align:center;padding:1rem}
-
 /* ── Log area ── */
-.log-area{height:150px;min-height:100px;overflow-y:auto;font-family:var(--font-mono);font-size:11px;line-height:1.7;padding:8px 12px;background:var(--card);border-top:1px solid var(--border-light);flex-shrink:0}
+.log-area{height:200px;min-height:120px;overflow-y:auto;font-family:var(--font-mono);font-size:11px;line-height:1.7;padding:8px 12px;background:var(--card);border-top:1px solid var(--border-light);flex-shrink:0}
+.log-area.resizable{resize:vertical}
 .log-entry{opacity:0;animation:logFade .15s forwards}
 @keyframes logFade{to{opacity:1}}
 .log-t{color:var(--text-dim);margin-right:6px}
@@ -142,8 +149,13 @@ body{
 .mb-8{margin-bottom:8px}
 .p-8{padding:8px}
 .txt-dim{color:var(--text-dim);font-size:12px}
+.w-full{width:100%}
 
-@media(max-width:860px){.app{flex-direction:column}.left-panel{width:100%;min-width:unset;max-height:55dvh;border-right:none;border-bottom:1px solid var(--border-light)}.log-area{height:80px}}
+/* ── Collapse grid ── */
+.opt-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.opt-grid .form-group{margin-bottom:6px}
+
+@media(max-width:900px){.app{flex-direction:column}.left-panel{width:100%;min-width:unset;max-height:60dvh;border-right:none;border-bottom:1px solid var(--border-light)}.log-area{height:80px}.opt-grid{grid-template-columns:1fr}}
 </style>
 </head>
 <body>
@@ -160,40 +172,44 @@ body{
       </span>
     </div>
 
-    <!-- Account tabs -->
-    <div id="accountTabs" class="tabs"></div>
+    <!-- Sub tabs: 账号 / 全局 -->
+    <div class="sub-tabs">
+      <div id="subTabAccounts" class="sub-tab active" onclick="switchSubTab('accounts')">账号设置</div>
+      <div id="subTabGlobal" class="sub-tab" onclick="switchSubTab('global')">全局设置</div>
+    </div>
 
-    <!-- Config form -->
-    <div class="scroll-area">
-      <!-- Account settings -->
+    <!-- ══ 账号设置面板 ══ -->
+    <div id="panelAccounts" class="scroll-area" style="display:block;">
+      <!-- Account tabs -->
+      <div id="accountTabs" class="tabs" style="padding:0 0 8px 0;"></div>
+
+      <!-- 账号基本信息 -->
       <div class="flex gap-8 mb-8" style="align-items:center;">
         <span id="acctToggle" class="toggle on" onclick="toggleCurrentAccount()"></span>
-        <span style="font-size:12px;color:var(--text-muted);">账号启用</span>
-        <input id="acctName" class="form-input" style="flex:1;max-width:160px;" placeholder="昵称" onchange="syncCurrentAccount()">
-        <button class="btn btn-sm" onclick="deleteAccount(activeAccountIdx)" style="color:var(--red);border-color:var(--red);font-size:10px;padding:2px 8px;">删除</button>
+        <span style="font-size:12px;color:var(--text-muted);">启用</span>
+        <input id="acctName" class="form-input" style="flex:1;" placeholder="账号昵称" onchange="syncCurrentAccount()">
+        <button class="btn btn-sm" onclick="addAccount()" style="font-size:10px;">+ 账号</button>
+        <button class="btn btn-sm" onclick="deleteAccount(activeAccountIdx)" style="color:var(--red);border-color:var(--red);font-size:10px;">删除</button>
       </div>
+
+      <!-- Cookie & 消息间隔 -->
       <div class="form-row">
         <div class="form-group">
-          <label class="form-label">间隔 (秒)</label>
-          <div class="flex gap-4">
-            <input id="intervalMin" class="form-input" type="number" min="1" style="width:60px;" onchange="syncCurrentAccount()">
-            <span style="line-height:32px;color:var(--text-dim);">—</span>
-            <input id="intervalMax" class="form-input" type="number" min="1" style="width:60px;" onchange="syncCurrentAccount()">
-          </div>
+          <label class="form-label">Cookie 文件名</label>
+          <input id="cookieFile" class="form-input" onchange="syncCurrentAccount()" placeholder="zhipin_cookies.json">
         </div>
         <div class="form-group">
-          <label class="form-label">Cookie</label>
-          <input id="cookieFile" class="form-input" onchange="syncCurrentAccount()">
+          <label class="form-label">消息间隔 (秒)</label>
+          <div class="flex gap-4">
+            <input id="intervalMin" class="form-input form-number" type="number" min="1" onchange="syncCurrentAccount()">
+            <span style="line-height:32px;color:var(--text-dim);">—</span>
+            <input id="intervalMax" class="form-input form-number" type="number" min="1" onchange="syncCurrentAccount()">
+          </div>
         </div>
       </div>
 
+      <!-- 图片附件 -->
       <div class="section-label-row">
-        <div class="section-label">岗位</div>
-        <button class="btn btn-sm" onclick="addJob()" style="font-size:10px;">+</button>
-      </div>
-      <div id="jobList"></div>
-
-      <div class="section-label-row mt-8">
         <div class="section-label">图片附件</div>
       </div>
       <div id="imageChips" class="chips" style="margin-bottom:6px;"></div>
@@ -201,6 +217,101 @@ body{
         <select id="imageSelector" class="form-select" style="font-size:11px;"><option value="">— 选择 —</option></select>
         <button class="btn btn-sm" onclick="addSelectedImage()">+</button>
       </div>
+
+      <!-- 岗位列表 -->
+      <div class="section-label-row mt-8">
+        <div class="section-label">岗位</div>
+        <button class="btn btn-sm" onclick="addJob()" style="font-size:10px;">+ 添加岗位</button>
+      </div>
+      <div id="jobList"></div>
+    </div>
+
+    <!-- ══ 全局设置面板 ══ -->
+    <div id="panelGlobal" class="scroll-area compact" style="display:none;">
+      <!-- 浏览器设置 -->
+      <div class="section-label-row"><div class="section-label">浏览器</div></div>
+      <div class="opt-grid">
+        <div class="form-group">
+          <label class="form-label">无头模式</label>
+          <div class="flex gap-4" style="align-items:center;">
+            <span id="browserHeadless" class="toggle" onclick="toggleGlobalBool('browser.headless',this)"></span>
+            <span style="font-size:12px;color:var(--text-dim);">隐藏浏览器窗口</span>
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">窗口大小</label>
+          <div class="flex gap-4">
+            <input id="browserW" class="form-input form-number" type="number" value="1280" onchange="syncGlobalSetting()" style="width:60px;">
+            <span style="line-height:32px;color:var(--text-dim);">×</span>
+            <input id="browserH" class="form-input form-number" type="number" value="800" onchange="syncGlobalSetting()" style="width:60px;">
+          </div>
+        </div>
+        <div class="form-group" style="grid-column:1/-1">
+          <label class="form-label">Chrome 可执行文件路径</label>
+          <input id="browserPath" class="form-input" onchange="syncGlobalSetting()" placeholder="留空=自动查找">
+        </div>
+        <div class="form-group" style="grid-column:1/-1">
+          <label class="form-label">用户数据目录</label>
+          <input id="userDataDir" class="form-input" onchange="syncGlobalSetting()" placeholder="留空=临时目录">
+        </div>
+      </div>
+
+      <!-- 反检测设置 -->
+      <div class="section-label-row mt-8"><div class="section-label">反检测</div></div>
+      <div class="opt-grid">
+        <div class="form-group" style="grid-column:1/-1">
+          <label class="form-label">自定义 User-Agent</label>
+          <input id="uaCustom" class="form-input" onchange="syncGlobalSetting()" placeholder="留空=随机">
+        </div>
+        <div class="form-group">
+          <label class="form-label">重试次数</label>
+          <input id="maxRetries" class="form-input form-number" type="number" min="0" value="3" onchange="syncGlobalSetting()">
+        </div>
+        <div class="form-group">
+          <label class="form-label">重试延迟 (秒)</label>
+          <input id="retryDelay" class="form-input form-number" type="number" min="0.5" step="0.5" value="2" onchange="syncGlobalSetting()">
+        </div>
+        <div class="form-group">
+          <label class="form-label">元素等待 (秒)</label>
+          <input id="opTimeout" class="form-input form-number" type="number" min="1" value="10" onchange="syncGlobalSetting()">
+        </div>
+        <div class="form-group">
+          <label class="form-label">页面加载 (秒)</label>
+          <input id="pageTimeout" class="form-input form-number" type="number" min="5" value="30" onchange="syncGlobalSetting()">
+        </div>
+      </div>
+
+      <!-- 频率限制 -->
+      <div class="section-label-row mt-8"><div class="section-label">频率限制</div></div>
+      <div class="opt-grid">
+        <div class="form-group">
+          <label class="form-label">每小时最多投递</label>
+          <input id="rateHour" class="form-input form-number" type="number" min="1" value="30" onchange="syncGlobalSetting()">
+        </div>
+        <div class="form-group">
+          <label class="form-label">每天最多投递</label>
+          <input id="rateDay" class="form-input form-number" type="number" min="1" value="100" onchange="syncGlobalSetting()">
+        </div>
+      </div>
+
+      <!-- 截图 -->
+      <div class="section-label-row mt-8"><div class="section-label">截图</div></div>
+      <div class="opt-grid">
+        <div class="form-group">
+          <label class="form-label">启用截图推送</label>
+          <div class="flex gap-4" style="align-items:center;">
+            <span id="screenshotEnabled" class="toggle on" onclick="toggleGlobalBool('screenshot.enabled',this)"></span>
+            <span style="font-size:12px;color:var(--text-dim);">向前端推送</span>
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">截图间隔 (秒)</label>
+          <input id="screenshotInterval" class="form-input form-number" type="number" min="0.5" step="0.5" value="3" onchange="syncGlobalSetting()">
+        </div>
+      </div>
+
+      <!-- 模板招呼语 (所有岗位通用，个性招呼在岗位里) -->
+      <div class="mt-8"><button class="btn btn-sm" onclick="syncGlobalSetting();addLog('SYSTEM','全局设置已同步')">同步全局设置</button></div>
     </div>
 
     <!-- Bottom actions -->
@@ -210,7 +321,6 @@ body{
       <button id="btnTestLogin" class="btn" onclick="checkLogin()" disabled>检查登录</button>
       <button id="btnConfirmLogin" class="btn" onclick="confirmLogin()" disabled>确认登录</button>
       <button class="btn btn-sm ml-auto" onclick="saveConfig()" style="font-size:10px;">保存</button>
-      <button class="btn btn-sm" onclick="addAccount()" style="font-size:10px;">+ 账号</button>
     </div>
   </div>
 
@@ -227,12 +337,28 @@ body{
       </div>
     </div>
 
-    <div class="preview-box">
-      <img id="screenshotImg" src="" alt="browser preview" style="display:none;">
-      <div id="screenshotPlaceholder" class="preview-placeholder">浏览器预览</div>
+    <!-- 实时卡片 -->
+    <div id="liveCards" style="display:flex;gap:8px;padding:8px 12px;flex-shrink:0;">
+      <div style="flex:1;background:var(--card);border:1px solid var(--border-light);border-radius:var(--r-md);padding:10px;">
+        <div style="font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--text-dim);">当前任务</div>
+        <div id="liveTask" style="font-size:14px;font-weight:500;margin-top:4px;">—</div>
+      </div>
+      <div style="flex:1;background:var(--card);border:1px solid var(--border-light);border-radius:var(--r-md);padding:10px;">
+        <div style="font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--text-dim);">运行状态</div>
+        <div id="liveStatus" style="font-size:14px;font-weight:500;margin-top:4px;color:var(--text-muted);">空闲</div>
+      </div>
     </div>
 
-    <div id="logArea" class="log-area"><div class="log-entry"><span class="log-t">&#9654;</span><span class="log-SYSTEM">就绪</span></div></div>
+    <!-- 中心区域：日志（取代截图预览） -->
+    <div style="flex:1;display:flex;flex-direction:column;min-height:0;padding:0 12px 8px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;flex-shrink:0;">
+        <span class="section-label">运行日志</span>
+        <button class="btn btn-sm" onclick="clearLogs()" style="font-size:10px;">清空</button>
+      </div>
+      <div id="logArea" class="log-area resizable" style="flex:1;border-radius:var(--r-md);border:1px solid var(--border-light);">
+        <div class="log-entry"><span class="log-t">&#9654;</span><span class="log-SYSTEM">就绪</span></div>
+      </div>
+    </div>
   </div>
 
 </div>
@@ -243,6 +369,83 @@ let stats = { total:0, applied:0, skipped:0 };
 let config = { accounts:[] };
 let activeAccountIdx = 0;
 let availableImages = [];
+let activeSubTab = 'accounts';
+
+// ═══ 全局设置读写 ═══
+
+const globalPaths = {
+  'browser.headless': { set: (v) => { document.getElementById('browserHeadless').className='toggle'+(v?' on':''); }, get: () => document.getElementById('browserHeadless').classList.contains('on') },
+  'screenshot.enabled': { set: (v) => { document.getElementById('screenshotEnabled').className='toggle'+(v?' on':''); }, get: () => document.getElementById('screenshotEnabled').classList.contains('on') },
+};
+
+function loadGlobalSettings() {
+  const g = config;
+  // 浏览器
+  setInput('browserHeadless', g.browser.headless, 'toggle');
+  setInput('browserW', g.browser.window_width);
+  setInput('browserH', g.browser.window_height);
+  setInput('browserPath', g.browser.executable_path);
+  setInput('userDataDir', g.browser.user_data_dir);
+  // 反检测
+  setInput('uaCustom', g.anti_detection.user_agent);
+  setInput('maxRetries', g.anti_detection.max_retries);
+  setInput('retryDelay', g.anti_detection.retry_base_delay);
+  setInput('opTimeout', g.anti_detection.operation_timeout);
+  setInput('pageTimeout', g.anti_detection.page_load_timeout);
+  // 频率限制
+  setInput('rateHour', g.rate_limit.max_applies_per_hour);
+  setInput('rateDay', g.rate_limit.max_applies_per_day);
+  // 截图
+  setInput('screenshotEnabled', g.screenshot.enabled, 'toggle');
+  setInput('screenshotInterval', g.screenshot.interval);
+}
+
+function syncGlobalSetting() {
+  const g = config;
+  if (!g.browser) g.browser = {headless:false,window_width:1280,window_height:800,executable_path:'',user_data_dir:''};
+  if (!g.anti_detection) g.anti_detection = {user_agent:'',max_retries:3,retry_base_delay:2,operation_timeout:10,page_load_timeout:30};
+  if (!g.rate_limit) g.rate_limit = {max_applies_per_hour:30,max_applies_per_day:100};
+  if (!g.screenshot) g.screenshot = {enabled:true,interval:3};
+
+  g.browser.headless = document.getElementById('browserHeadless').classList.contains('on');
+  g.browser.window_width = parseInt(document.getElementById('browserW').value) || 1280;
+  g.browser.window_height = parseInt(document.getElementById('browserH').value) || 800;
+  g.browser.executable_path = document.getElementById('browserPath').value.trim();
+  g.browser.user_data_dir = document.getElementById('userDataDir').value.trim();
+  g.anti_detection.user_agent = document.getElementById('uaCustom').value.trim();
+  g.anti_detection.max_retries = parseInt(document.getElementById('maxRetries').value) || 3;
+  g.anti_detection.retry_base_delay = parseFloat(document.getElementById('retryDelay').value) || 2;
+  g.anti_detection.operation_timeout = parseInt(document.getElementById('opTimeout').value) || 10;
+  g.anti_detection.page_load_timeout = parseInt(document.getElementById('pageTimeout').value) || 30;
+  g.rate_limit.max_applies_per_hour = parseInt(document.getElementById('rateHour').value) || 30;
+  g.rate_limit.max_applies_per_day = parseInt(document.getElementById('rateDay').value) || 100;
+  g.screenshot.enabled = document.getElementById('screenshotEnabled').classList.contains('on');
+  g.screenshot.interval = parseFloat(document.getElementById('screenshotInterval').value) || 3;
+}
+
+function toggleGlobalBool(path, el) {
+  el.classList.toggle('on');
+  syncGlobalSetting();
+  addLog('INFO', '全局设置已更新');
+}
+
+function setInput(id, val, type) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  if (type === 'toggle') { el.className = 'toggle' + (val ? ' on' : ''); }
+  else { el.value = val ?? ''; }
+}
+
+// ═══ 子标签切换 ═══
+
+function switchSubTab(tab) {
+  activeSubTab = tab;
+  document.getElementById('subTabAccounts').className = 'sub-tab' + (tab==='accounts'?' active':'');
+  document.getElementById('subTabGlobal').className = 'sub-tab' + (tab==='global'?' active':'');
+  document.getElementById('panelAccounts').style.display = tab==='accounts' ? 'block' : 'none';
+  document.getElementById('panelGlobal').style.display = tab==='global' ? 'block' : 'none';
+  if (tab === 'global') syncGlobalSetting(); // 先同步账号侧再切
+}
 
 // ═══ 配置 ═══
 
@@ -251,16 +454,23 @@ async function loadConfig() {
     const res = await fetch('/api/config');
     config = await res.json();
     if (!config.accounts || !config.accounts.length) {
-      config = { accounts: [{ name:'主账号', enabled:true, cookie_file:'zhipin_cookies.json', image_files:[], message_interval_min:3, message_interval_max:8, jobs:[{ enabled:true, city:'上海', query:'数据分析', scroll_pages:5, greeting_message:'您好，希望能获得面试机会。' }] }] };
+      config = { browser:{headless:false,window_width:1280,window_height:800,executable_path:'',user_data_dir:''}, anti_detection:{user_agent:'',max_retries:3,retry_base_delay:2,operation_timeout:10,page_load_timeout:30}, rate_limit:{max_applies_per_hour:30,max_applies_per_day:100}, screenshot:{enabled:true,interval:3}, accounts: [{ name:'主账号', enabled:true, cookie_file:'zhipin_cookies.json', image_files:[], message_interval_min:3, message_interval_max:8, jobs:[{ enabled:true, city:'上海', query:'数据分析', scroll_pages:5, greeting_message:'您好，希望能获得面试机会。', min_salary:0, max_salary:0, experience:'', education:'', exclude_companies:[], include_keywords:[] }] }] };
     }
+    // 确保全局设置存在
+    if (!config.browser) config.browser = {headless:false,window_width:1280,window_height:800,executable_path:'',user_data_dir:''};
+    if (!config.anti_detection) config.anti_detection = {user_agent:'',max_retries:3,retry_base_delay:2,operation_timeout:10,page_load_timeout:30};
+    if (!config.rate_limit) config.rate_limit = {max_applies_per_hour:30,max_applies_per_day:100};
+    if (!config.screenshot) config.screenshot = {enabled:true,interval:3};
     renderTabs();
     renderAccount(0);
+    loadGlobalSettings();
     loadImages();
   } catch(e) { addLog('ERROR', '配置加载失败: ' + e.message); }
 }
 
 async function saveConfig() {
-  syncCurrentAccount();
+  if (activeSubTab === 'global') syncGlobalSetting();
+  else syncCurrentAccount();
   try {
     const res = await fetch('/api/config', { method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify(config) });
     const data = await res.json();
@@ -310,11 +520,21 @@ function syncCurrentAccount() {
   document.querySelectorAll('.job-card').forEach(card => {
     const ji = parseInt(card.dataset.jobIndex);
     const job = a.jobs[ji]; if (!job) return;
+    // 基础
     const q = card.querySelector('.j-q'), c = card.querySelector('.j-c'), p = card.querySelector('.j-p'), g = card.querySelector('.j-g');
     if (q) job.query = q.value;
     if (c) job.city = c.value;
     if (p) job.scroll_pages = parseInt(p.value) || 5;
     if (g) job.greeting_message = g.value;
+    // 高级
+    const ms = card.querySelector('.j-ms'), xs = card.querySelector('.j-xs'), ex = card.querySelector('.j-ex'), ed = card.querySelector('.j-ed');
+    const excl = card.querySelector('.j-excl'), incl = card.querySelector('.j-incl');
+    if (ms) job.min_salary = parseInt(ms.value) || 0;
+    if (xs) job.max_salary = parseInt(xs.value) || 0;
+    if (ex) job.experience = ex.value;
+    if (ed) job.education = ed.value;
+    if (excl) job.exclude_companies = excl.value.split(',').map(s=>s.trim()).filter(Boolean);
+    if (incl) job.include_keywords = incl.value.split(',').map(s=>s.trim()).filter(Boolean);
   });
 }
 
@@ -354,12 +574,15 @@ function renderJobs(ai) {
   if (!a || !a.jobs || !a.jobs.length) {
     container.innerHTML = '<div class="txt-dim" style="padding:8px 0;">暂无岗位</div>'; return;
   }
-  container.innerHTML = a.jobs.map((job, ji) => `
+  container.innerHTML = a.jobs.map((job, ji) => {
+    const extraFields = job.min_salary || job.max_salary || job.experience || job.education || (job.exclude_companies||[]).length || (job.include_keywords||[]).length;
+    const advancedOpen = extraFields ? 'open' : '';
+    return `
     <div class="job-card${job.enabled?'':' disabled'}" data-job-index="${ji}">
       <div class="job-card-header">
         <div class="flex gap-4" style="align-items:center;">
           <span class="toggle${job.enabled?' on':''}" onclick="event.stopPropagation();toggleJob(${ji})"></span>
-          <span class="job-card-title">岗位 ${ji+1}</span>
+          <span class="job-card-title">${escHtml(job.query||'岗位'+(ji+1))}</span>
         </div>
         <div class="flex gap-4">
           <button class="btn btn-sm" onclick="deleteJob(${ji})" style="color:var(--red);border-color:transparent;font-size:10px;padding:1px 6px;">&#10005;</button>
@@ -368,13 +591,47 @@ function renderJobs(ai) {
       <div class="form-row">
         <div class="form-group"><label class="form-label">关键词</label><input class="form-input j-q" value="${escAttr(job.query||'')}" onchange="syncCurrentAccount()" placeholder="数据分析"></div>
         <div class="form-group"><label class="form-label">城市</label>
-          <select class="form-select j-c" onchange="syncCurrentAccount()">${['上海','北京','深圳','广州','杭州','成都','武汉','南京','西安','苏州'].map(c=>'<option'+(c===job.city?' selected':'')+'>'+c+'</option>').join('')}</select>
+          <select class="form-select j-c" onchange="syncCurrentAccount()">${['上海','北京','深圳','广州','杭州','成都','武汉','南京','西安','苏州','重庆','厦门'].map(c=>'<option'+(c===job.city?' selected':'')+'>'+c+'</option>').join('')}</select>
         </div>
-        <div class="form-group"><label class="form-label">页数</label><input class="form-input j-p" type="number" min="1" value="${job.scroll_pages||5}" onchange="syncCurrentAccount()" style="width:52px;"></div>
+        <div class="form-group"><label class="form-label">页数</label><input class="form-input j-p form-number" type="number" min="1" value="${job.scroll_pages||5}" onchange="syncCurrentAccount()"></div>
       </div>
-      <div class="form-group"><label class="form-label">招呼语</label><textarea class="form-textarea j-g" rows="2" onchange="syncCurrentAccount()">${escHtml(job.greeting_message||'')}</textarea></div>
-    </div>
-  `).join('');
+      <div class="form-group">
+        <label class="form-label">招呼语</label>
+        <textarea class="form-textarea j-g" rows="2" onchange="syncCurrentAccount()">${escHtml(job.greeting_message||'')}</textarea>
+      </div>
+      <div class="collapse-header" onclick="toggleAdvanced(this)">
+        <span class="collapse-arrow ${advancedOpen}">&#9654;</span>
+        <span style="font-size:12px;color:var(--text-muted);">高级筛选</span>
+      </div>
+      <div class="collapse-body ${advancedOpen}">
+        <div class="opt-grid">
+          <div class="form-group"><label class="form-label">最低薪资</label><input class="form-input j-ms form-number" type="number" min="0" value="${job.min_salary||0}" onchange="syncCurrentAccount()" placeholder="0=不限"></div>
+          <div class="form-group"><label class="form-label">最高薪资</label><input class="form-input j-xs form-number" type="number" min="0" value="${job.max_salary||0}" onchange="syncCurrentAccount()" placeholder="0=不限"></div>
+          <div class="form-group"><label class="form-label">经验要求</label>
+            <select class="form-select j-ex" onchange="syncCurrentAccount()">
+              <option value="">不限</option>
+              ${['应届生','1年以内','1-3年','3-5年','5-10年','10年以上'].map(v=>'<option'+(v===job.experience?' selected':'')+'>'+v+'</option>').join('')}
+            </select>
+          </div>
+          <div class="form-group"><label class="form-label">学历要求</label>
+            <select class="form-select j-ed" onchange="syncCurrentAccount()">
+              <option value="">不限</option>
+              ${['初中及以下','中专/中技','高中','大专','本科','硕士','博士'].map(v=>'<option'+(v===job.education?' selected':'')+'>'+v+'</option>').join('')}
+            </select>
+          </div>
+          <div class="form-group" style="grid-column:1/-1"><label class="form-label">排除公司（逗号分隔）</label><input class="form-input j-excl" value="${escAttr((job.exclude_companies||[]).join(', '))}" onchange="syncCurrentAccount()" placeholder="公司A, 公司B"></div>
+          <div class="form-group" style="grid-column:1/-1"><label class="form-label">包含关键词（逗号分隔）</label><input class="form-input j-incl" value="${escAttr((job.include_keywords||[]).join(', '))}" onchange="syncCurrentAccount()" placeholder="Python, SQL, Excel"></div>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function toggleAdvanced(header) {
+  const arrow = header.querySelector('.collapse-arrow');
+  const body = header.nextElementSibling;
+  arrow.classList.toggle('open');
+  body.classList.toggle('open');
 }
 
 function toggleJob(ji) {
@@ -451,12 +708,19 @@ function setControls(running) {
   const dot = document.getElementById('statusDot');
   document.getElementById('statusText').textContent = running ? '运行中' : '就绪';
   dot.className = 'status-dot' + (running ? ' running' : '');
+  document.getElementById('liveStatus').textContent = running ? '运行中' : '空闲';
+  document.getElementById('liveStatus').style.color = running ? 'var(--green)' : 'var(--text-muted)';
 }
 
 function updateStats() {
   document.getElementById('statTotal').textContent = stats.total;
   document.getElementById('statApplied').textContent = stats.applied;
   document.getElementById('statSkipped').textContent = stats.skipped;
+}
+
+function clearLogs() {
+  const area = document.getElementById('logArea');
+  area.innerHTML = '<div class="log-entry"><span class="log-t">&#9654;</span><span class="log-SYSTEM">已清空</span></div>';
 }
 
 // ═══ 工具 ═══
@@ -471,7 +735,7 @@ function addLog(level, message) {
   div.innerHTML = '<span class="log-t">'+new Date().toLocaleTimeString()+'</span><span class="log-'+level+'">'+escHtml(message)+'</span>';
   area.appendChild(div);
   area.scrollTop = area.scrollHeight;
-  while (area.children.length > 300) area.removeChild(area.firstChild);
+  while (area.children.length > 500) area.removeChild(area.firstChild);
 }
 
 // ═══ SocketIO ═══
@@ -486,18 +750,17 @@ socket.on('bot_progress', (d) => {
   updateStats();
 });
 socket.on('bot_screenshot', (d) => {
-  const img = document.getElementById('screenshotImg'), plc = document.getElementById('screenshotPlaceholder');
-  img.src = 'data:image/png;base64,' + d.image; img.style.display = 'block'; plc.style.display = 'none';
-  document.getElementById('currentTaskLabel').textContent = d.label || '';
+  // 截图数据保留接收但不显示（后端可关闭）
+  if (d.label) document.getElementById('liveTask').textContent = d.label;
 });
 socket.on('bot_status', (d) => {
   setControls(d.running);
-  if (!d.running) document.getElementById('currentTaskLabel').textContent = '';
+  if (!d.running) document.getElementById('liveTask').textContent = '—';
 });
 socket.on('scheduler_status', (d) => {
   setControls(d.running);
-  if (d.current) document.getElementById('currentTaskLabel').textContent = d.current.account + ' / ' + d.current.query + '(' + d.current.city + ')';
-  else if (!d.running) document.getElementById('currentTaskLabel').textContent = '';
+  if (d.current) document.getElementById('liveTask').textContent = d.current.account + ' / ' + d.current.query + '(' + d.current.city + ')';
+  else if (!d.running) document.getElementById('liveTask').textContent = '—';
 });
 socket.on('login_result', (d) => { if (d.success) addLog('SUCCESS', '已登录'); else addLog('ERROR', '未登录'); });
 

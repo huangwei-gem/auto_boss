@@ -11,15 +11,27 @@
       "jobs": [
         {
           "city": "上海",
+          "education": "",
           "enabled": true,
+          "exclude_companies": [],
+          "experience": "",
           "greeting_message": "您好，我是双一流的本科，应聘数据分析岗位。在校系统学习数据分析相关知识，掌握Excel、基础SQL与数据整理技能，具备数据思维。做事严谨细心，学习能力强，愿意踏实积累。十分认可贵公司，希望能获得面试机会。",
+          "include_keywords": [],
+          "max_salary": 0,
+          "min_salary": 0,
           "query": "数据分析",
           "scroll_pages": 5
         },
         {
           "city": "上海",
+          "education": "",
           "enabled": true,
+          "exclude_companies": [],
+          "experience": "",
           "greeting_message": "您好，我是双一流的本科，应聘数据分析岗位。在校系统学习数据分析相关知识，掌握Excel、基础SQL与数据整理技能，具备数据思维。做事严谨细心，学习能力强，愿意踏实积累。十分认可贵公司，希望能获得面试机会。",
+          "include_keywords": [],
+          "max_salary": 0,
+          "min_salary": 0,
           "query": "产品经理",
           "scroll_pages": 3
         }
@@ -28,5 +40,27 @@
       "message_interval_min": 3,
       "name": "主账号"
     }
-  ]
+  ],
+  "anti_detection": {
+    "max_retries": 3,
+    "operation_timeout": 10,
+    "page_load_timeout": 30,
+    "retry_base_delay": 2,
+    "user_agent": ""
+  },
+  "browser": {
+    "executable_path": "",
+    "headless": false,
+    "user_data_dir": "",
+    "window_height": 800,
+    "window_width": 1280
+  },
+  "rate_limit": {
+    "max_applies_per_day": 100,
+    "max_applies_per_hour": 30
+  },
+  "screenshot": {
+    "enabled": true,
+    "interval": 3
+  }
 }

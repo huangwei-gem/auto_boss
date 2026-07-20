@@ -1,0 +1,45 @@
+  Boss 直聘 · 自动投递  Web 版（多岗位多账号）
+  启动地址: http://127.0.0.1:5000
+  ========================================
+2026-07-20 20:19:06,515 [WARNING] Werkzeug appears to be used in a production deployment. Consider switching to a production web server instead.
+ * Serving Flask app 'server'
+ * Debug mode: off
+2026-07-20 20:19:06,523 [INFO] [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on http://127.0.0.1:5000
+2026-07-20 20:19:06,523 [INFO] [33mPress CTRL+C to quit[0m
+2026-07-20 20:19:18,668 [INFO] 127.0.0.1 - - [20/Jul/2026 20:19:18] "GET / HTTP/1.1" 200 -
+2026-07-20 20:19:19,534 [INFO] 127.0.0.1 - - [20/Jul/2026 20:19:19] "GET /api/config HTTP/1.1" 200 -
+2026-07-20 20:19:19,534 [INFO] 127.0.0.1 - - [20/Jul/2026 20:19:19] "GET /socket.io/?EIO=4&transport=polling&t=Pz_TsTe HTTP/1.1" 200 -
+2026-07-20 20:19:19,630 [INFO] Client connected: w7hHqcZYrql_XxrMAAAB
+2026-07-20 20:19:19,630 [INFO] 127.0.0.1 - - [20/Jul/2026 20:19:19] "POST /socket.io/?EIO=4&transport=polling&t=Pz_TsV6&sid=7cjj4aTRZnuI4GYFAAAA HTTP/1.1" 200 -
+2026-07-20 20:19:19,640 [INFO] 127.0.0.1 - - [20/Jul/2026 20:19:19] "GET /socket.io/?EIO=4&transport=polling&t=Pz_TsVB&sid=7cjj4aTRZnuI4GYFAAAA HTTP/1.1" 200 -
+2026-07-20 20:19:19,652 [INFO] 127.0.0.1 - - [20/Jul/2026 20:19:19] "GET /api/images HTTP/1.1" 200 -
+2026-07-20 20:19:19,653 [INFO] 127.0.0.1 - - [20/Jul/2026 20:19:19] "GET /socket.io/?EIO=4&transport=polling&t=Pz_TsVW&sid=7cjj4aTRZnuI4GYFAAAA HTTP/1.1" 200 -
+2026-07-20 20:19:19,806 [INFO] 127.0.0.1 - - [20/Jul/2026 20:19:19] "[33mGET /favicon.ico HTTP/1.1[0m" 404 -
+2026-07-20 20:19:21,712 [INFO] 127.0.0.1 - - [20/Jul/2026 20:19:21] "GET / HTTP/1.1" 200 -
+2026-07-20 20:22:11,652 [INFO] 127.0.0.1 - - [20/Jul/2026 20:22:11] "GET /api/config HTTP/1.1" 200 -
+2026-07-20 20:28:33,898 [INFO] Client disconnected: w7hHqcZYrql_XxrMAAAB
+2026-07-20 20:28:33,898 [INFO] 127.0.0.1 - - [20/Jul/2026 20:28:33] "GET /socket.io/?EIO=4&transport=websocket&sid=7cjj4aTRZnuI4GYFAAAA HTTP/1.1" 200 -
+2026-07-20 20:40:23,645 [INFO] 127.0.0.1 - - [20/Jul/2026 20:40:23] "GET / HTTP/1.1" 200 -
+2026-07-20 20:42:32,560 [INFO] 127.0.0.1 - - [20/Jul/2026 20:42:32] "GET / HTTP/1.1" 200 -
+2026-07-20 20:42:43,032 [INFO] 127.0.0.1 - - [20/Jul/2026 20:42:43] "GET /socket.io/?EIO=4&transport=polling&t=Pz_ZD7D HTTP/1.1" 200 -
+2026-07-20 20:42:43,036 [INFO] 127.0.0.1 - - [20/Jul/2026 20:42:43] "GET /api/config HTTP/1.1" 200 -
+2026-07-20 20:42:43,101 [INFO] Client connected: XO6VNtMXt5-xivRXAAAD
+2026-07-20 20:42:43,102 [INFO] 127.0.0.1 - - [20/Jul/2026 20:42:43] "POST /socket.io/?EIO=4&transport=polling&t=Pz_ZD8H&sid=9397LOjM_p5xHRPBAAAC HTTP/1.1" 200 -
+2026-07-20 20:42:43,115 [INFO] 127.0.0.1 - - [20/Jul/2026 20:42:43] "GET /socket.io/?EIO=4&transport=polling&t=Pz_ZD8I&sid=9397LOjM_p5xHRPBAAAC HTTP/1.1" 200 -
+2026-07-20 20:42:43,307 [INFO] 127.0.0.1 - - [20/Jul/2026 20:42:43] "GET /socket.io/?EIO=4&transport=polling&t=Pz_ZDBZ&sid=9397LOjM_p5xHRPBAAAC HTTP/1.1" 200 -
+2026-07-20 20:42:43,311 [INFO] 127.0.0.1 - - [20/Jul/2026 20:42:43] "GET /api/images HTTP/1.1" 200 -
+2026-07-20 20:42:44,689 [INFO] 127.0.0.1 - - [20/Jul/2026 20:42:44] "[33mGET /favicon.ico HTTP/1.1[0m" 404 -
+2026-07-20 20:42:49,031 [INFO] 127.0.0.1 - - [20/Jul/2026 20:42:49] "PUT /api/config HTTP/1.1" 200 -
+2026-07-20 20:55:37,818 [INFO] Client disconnected: XO6VNtMXt5-xivRXAAAD
+2026-07-20 20:55:37,845 [INFO] 127.0.0.1 - - [20/Jul/2026 20:55:37] "GET /socket.io/?EIO=4&transport=websocket&sid=9397LOjM_p5xHRPBAAAC HTTP/1.1" 200 -
+2026-07-20 21:00:30,611 [INFO] 127.0.0.1 - - [20/Jul/2026 21:00:30] "GET / HTTP/1.1" 200 -
+2026-07-20 21:01:45,450 [INFO] 127.0.0.1 - - [20/Jul/2026 21:01:45] "GET /api/config HTTP/1.1" 200 -
+2026-07-20 21:01:45,453 [INFO] 127.0.0.1 - - [20/Jul/2026 21:01:45] "GET /socket.io/?EIO=4&transport=polling&t=Pz_da1L HTTP/1.1" 200 -
+2026-07-20 21:01:45,660 [INFO] Client connected: -tqXuIaxJ_Ldr-2kAAAF
+2026-07-20 21:01:45,662 [INFO] 127.0.0.1 - - [20/Jul/2026 21:01:45] "POST /socket.io/?EIO=4&transport=polling&t=Pz_da4S&sid=oRshbQ0EQaijHzjdAAAE HTTP/1.1" 200 -
+2026-07-20 21:01:45,688 [INFO] 127.0.0.1 - - [20/Jul/2026 21:01:45] "GET /socket.io/?EIO=4&transport=polling&t=Pz_da4U&sid=oRshbQ0EQaijHzjdAAAE HTTP/1.1" 200 -
+2026-07-20 21:01:46,224 [INFO] 127.0.0.1 - - [20/Jul/2026 21:01:46] "GET /socket.io/?EIO=4&transport=polling&t=Pz_daDb&sid=oRshbQ0EQaijHzjdAAAE HTTP/1.1" 200 -
+2026-07-20 21:01:46,329 [INFO] 127.0.0.1 - - [20/Jul/2026 21:01:46] "GET /socket.io/?EIO=4&transport=polling&t=Pz_daFJ&sid=oRshbQ0EQaijHzjdAAAE HTTP/1.1" 200 -
+2026-07-20 21:03:53,372 [INFO] 127.0.0.1 - - [20/Jul/2026 21:03:53] "GET /api/config HTTP/1.1" 200 -
+2026-07-20 21:04:19,355 [INFO] 127.0.0.1 - - [20/Jul/2026 21:04:19] "GET /api/config HTTP/1.1" 200 -

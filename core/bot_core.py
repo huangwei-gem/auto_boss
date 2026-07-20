@@ -16,7 +16,7 @@ from functools import wraps
 from io import BytesIO
 from typing import Optional, Callable
 
-from DrissionPage import ChromiumPage
+from DrissionPage import ChromiumPage, ChromiumOptions
 
 # ─────────────────────────────────────────────
 # 常量
@@ -110,6 +110,22 @@ class BotCore:
         self.jobs: list[dict] = []
         self._sent_jobs: set[str] = set()
 
+        # ── 从配置读取运行时参数 ──
+        self.headless = config.get("browser", {}).get("headless", False)
+        self.browser_path = config.get("browser", {}).get("executable_path", "")
+        self.window_width = config.get("browser", {}).get("window_width", 1280)
+        self.window_height = config.get("browser", {}).get("window_height", 800)
+        self.user_data_dir = config.get("browser", {}).get("user_data_dir", "")
+        self.custom_ua = config.get("anti_detection", {}).get("user_agent", "")
+        self.max_retries = config.get("anti_detection", {}).get("max_retries", MAX_RETRIES)
+        self.retry_base_delay = config.get("anti_detection", {}).get("retry_base_delay", RETRY_BASE_DELAY)
+        self.operation_timeout = config.get("anti_detection", {}).get("operation_timeout", 10)
+        self.page_load_timeout = config.get("anti_detection", {}).get("page_load_timeout", 30)
+        self.max_applies_per_hour = config.get("rate_limit", {}).get("max_applies_per_hour", MAX_APPLIES_PER_HOUR)
+        self.max_applies_per_day = config.get("rate_limit", {}).get("max_applies_per_day", MAX_APPLIES_PER_DAY)
+        self.screenshot_enabled = config.get("screenshot", {}).get("enabled", True)
+        self.screenshot_interval = config.get("screenshot", {}).get("interval", 3.0)
+
     # ── helpers ──
 
     def _log(self, level: str, msg: str) -> None:
@@ -182,8 +198,8 @@ class BotCore:
     def _check_rate_limit(self) -> bool:
         """检查是否超过频率限制。True = 可以继续。"""
         today_applies = sum(1 for url in self._sent_jobs if url)
-        if today_applies >= MAX_APPLIES_PER_DAY:
-            self._log("WARN", f"已达每日投递上限 {MAX_APPLIES_PER_DAY}，停止投递")
+        if today_applies >= self.max_applies_per_day:
+            self._log("WARN", f"已达每日投递上限 {self.max_applies_per_day}，停止投递")
             return False
         return True
 
@@ -205,9 +221,22 @@ class BotCore:
         self._log("INFO", f"已加载 {len(self._sent_jobs)} 条历史投递记录")
 
         try:
-            self.dp = ChromiumPage()
-            # 设置 User-Agent
-            self.dp.set.user_agent(self._random_ua())
+            # ── 浏览器配置 ──
+            co = ChromiumOptions()
+            if self.headless:
+                co.set_argument("--headless=new")
+            co.set_argument(f"--window-size={self.window_width},{self.window_height}")
+            if self.browser_path:
+                co.set_browser_path(self.browser_path)
+            if self.user_data_dir:
+                co.set_argument(f"--user-data-dir={self.user_data_dir}")
+
+            ua = self.custom_ua or self._random_ua()
+            co.set_user_agent(ua)
+
+            self.dp = ChromiumPage(addr_or_opts=co)
+            self.dp.set.timeouts(self.page_load_timeout, self.operation_timeout)
+            self._log("INFO", f"浏览器已启动（{'无头' if self.headless else '可见'}模式，{self.window_width}x{self.window_height}）")
 
             self._step_login()
             if not self.running or not self._is_logged_in:
@@ -265,6 +294,11 @@ class BotCore:
     # ── 截图循环 ──
 
     def _start_screenshot_loop(self) -> None:
+        if not self.screenshot_enabled:
+            self._log("INFO", "截图已禁用")
+            return
+        interval = self.screenshot_interval
+
         def _loop():
             while not self._stop_screenshot.is_set() and self.running and self.dp:
                 try:
@@ -274,7 +308,7 @@ class BotCore:
                         self.screenshot_cb(screenshot_data)
                 except Exception:
                     pass
-                self._stop_screenshot.wait(timeout=3)
+                self._stop_screenshot.wait(timeout=interval)
         self._screenshot_thread = threading.Thread(target=_loop, daemon=True)
         self._screenshot_thread.start()
 

@@ -20,14 +20,20 @@ from flask_socketio import SocketIO, emit
 # ── 路径 ──
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_DIR = os.path.dirname(BASE_DIR)
-CODE_DIR = os.path.join(PROJECT_DIR, "boss自动投简历")
-sys.path.insert(0, CODE_DIR)
+CORE_DIR = os.path.join(PROJECT_DIR, "core")
+DATA_DIR = os.path.join(PROJECT_DIR, "data")
+sys.path.insert(0, CORE_DIR)
 os.chdir(BASE_DIR)
 
 # 复制配置和数据文件到 web 工作目录（如果不存在）
 import shutil
-for fn in ("chats_log.json", "zhipin_cookies"):
-    src = os.path.join(CODE_DIR, fn)
+for fn in ("chats_log.json",):
+    src = os.path.join(DATA_DIR, fn)
+    dst = os.path.join(BASE_DIR, fn)
+    if os.path.exists(src) and not os.path.exists(dst):
+        shutil.copy2(src, dst)
+for fn in ("zhipin_cookies",):
+    src = os.path.join(PROJECT_DIR, fn)
     dst = os.path.join(BASE_DIR, fn)
     if os.path.exists(src) and not os.path.exists(dst):
         shutil.copy2(src, dst)
@@ -115,6 +121,18 @@ class TaskScheduler:
                 "image_files": task["image_files"],
                 "message_interval_min": task["message_interval_min"],
                 "message_interval_max": task["message_interval_max"],
+                # 高级过滤（供后续 BotCore 使用）
+                "min_salary": task.get("min_salary", 0),
+                "max_salary": task.get("max_salary", 0),
+                "experience": task.get("experience", ""),
+                "education": task.get("education", ""),
+                "exclude_companies": task.get("exclude_companies", []),
+                "include_keywords": task.get("include_keywords", []),
+                # 全局设置（随任务携带）
+                "browser": _config.get("browser", {}),
+                "anti_detection": _config.get("anti_detection", {}),
+                "rate_limit": _config.get("rate_limit", {}),
+                "screenshot": _config.get("screenshot", {}),
             }
 
             runner = BotRunner(bot_config, self.sid, label)
@@ -171,9 +189,17 @@ class BotRunner:
         socketio.emit("bot_progress", {**stats, "label": self.label}, to=self.sid)
 
     def run(self):
+        # 构建完整配置（任务级 + 全局设置）
+        full_config = dict(self.config)
+        # 合并全局设置
+        full_config.setdefault("browser", _config.get("browser", {}))
+        full_config.setdefault("anti_detection", _config.get("anti_detection", {}))
+        full_config.setdefault("rate_limit", _config.get("rate_limit", {}))
+        full_config.setdefault("screenshot", _config.get("screenshot", {}))
+
         try:
             self.bot = BotCore(
-                config=self.config,
+                config=full_config,
                 log_callback=self.log_cb,
                 screenshot_callback=self.screenshot_cb,
                 progress_callback=self.progress_cb,
@@ -273,10 +299,16 @@ def api_add_job(ai):
         return jsonify({"status": "error", "errors": ["账号索引无效"]}), 400
     new_job = {
         "enabled": True,
-        "city": accs[ai].get("city", "上海") if "jobs" not in accs[ai] else "上海",
+        "city": "上海",
         "query": "",
         "scroll_pages": 5,
         "greeting_message": "您好，希望能获得面试机会。",
+        "min_salary": 0,
+        "max_salary": 0,
+        "experience": "",
+        "education": "",
+        "exclude_companies": [],
+        "include_keywords": [],
     }
     accs[ai].setdefault("jobs", []).append(new_job)
     save_config(_config)
@@ -409,6 +441,10 @@ def on_start_bot(data):
         "image_files": task["image_files"],
         "message_interval_min": task["message_interval_min"],
         "message_interval_max": task["message_interval_max"],
+        "browser": _config.get("browser", {}),
+        "anti_detection": _config.get("anti_detection", {}),
+        "rate_limit": _config.get("rate_limit", {}),
+        "screenshot": _config.get("screenshot", {}),
     }
 
     label = f"{task['account_name']} / {task['query']}({task['city']})"
