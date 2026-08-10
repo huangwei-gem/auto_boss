@@ -53,6 +53,7 @@ _bot: BotCore | None = None
 _bot_thread: threading.Thread | None = None
 _scheduler_thread: threading.Thread | None = None
 _scheduler_stop = threading.Event()
+_scheduler_running = False
 _config = load_config()
 _current_task: dict | None = None
 
@@ -190,11 +191,11 @@ class BotRunner:
         try:
             self.log("启动中...")
             self.bot = BotCore(
-    self.bot_config,
-    log_callback=self.log,
-    screenshot_callback=None,
-    progress_callback=None,
-)
+                self.bot_config,
+                log_callback=self.log,
+                screenshot_callback=None,
+                progress_callback=None,
+            )
             socketio.emit("scheduler_status", {
                 "running": True,
                 "current": {"account": self.label.split(" / ")[0], "query": self.label.split(" / ")[1] if " / " in self.label else self.label, "city": ""},
@@ -359,6 +360,25 @@ def api_delete_image():
         return jsonify({"status": "error", "message": "文件不存在"}), 404
 
 
+@app.route("/api/scheduler/reset", methods=["POST"])
+def api_reset_scheduler():
+    """重置调度器状态（前端用来解除卡死状态）。"""
+    global _scheduler_running, _scheduler_thread, _scheduler_stop, _bot, _bot_thread
+    _scheduler_running = False
+    _scheduler_stop.set()
+    if _scheduler_thread and _scheduler_thread.is_alive():
+        _scheduler_thread.join(timeout=1)
+    _scheduler_thread = None
+    if _bot_thread and _bot_thread.is_alive():
+        _bot_thread.join(timeout=1)
+    _bot_thread = None
+    _bot = None
+    logger.info("调度器状态已重置")
+    return jsonify({"status": "ok"})
+
+
+
+
 @app.route("/api/stats", methods=["GET"])
 def api_stats():
     return jsonify({
@@ -394,11 +414,19 @@ def on_disconnect():
 @socketio.on("start_all")
 def on_start_all(data=None):
     """启动所有启用的账号×岗位任务。"""
-    global _scheduler_thread, _scheduler_stop, _bot
+    global _scheduler_thread, _scheduler_stop, _bot, _scheduler_running
 
-    if _scheduler_thread and _scheduler_thread.is_alive():
-        emit("bot_log", {"message": "[SYSTEM] 调度器已在运行中"})
-        return
+    # 如果标记为运行中但线程已死，重置状态
+    if _scheduler_running:
+        if _scheduler_thread and _scheduler_thread.is_alive():
+            emit("bot_log", {"message": "[SYSTEM] 调度器已在运行中"})
+            return
+        else:
+            # 线程已死，重置状态
+            _scheduler_running = False
+            _scheduler_thread = None
+            _bot = None
+            logger.info("检测到调度器线程已结束，重置状态")
 
     # 展开任务
     tasks = flatten_jobs_for_run(_config)
@@ -408,17 +436,21 @@ def on_start_all(data=None):
 
     emit("bot_log", {"message": f"[SYSTEM] 调度器启动，共 {len(tasks)} 个任务"})
     emit("bot_status", {"running": True})
+    emit("scheduler_status", {"running": True})
 
     _scheduler_stop.clear()
+    _scheduler_running = True
     scheduler = TaskScheduler(tasks, request.sid)
-    _bot = scheduler  # 使 confirm_login / check_login 能到达当前 BotCore
+    _bot = scheduler
 
     def _run_scheduler():
+        global _scheduler_running
         try:
             scheduler.run()
         finally:
-            global _scheduler_thread
+            _scheduler_running = False
             _scheduler_thread = None
+            emit("bot_status", {"running": False}, to=request.sid)
 
     _scheduler_thread = threading.Thread(target=_run_scheduler, daemon=True)
     _scheduler_thread.start()
@@ -427,8 +459,9 @@ def on_start_all(data=None):
 @socketio.on("stop_all")
 def on_stop_all():
     """停止调度器。"""
-    global _scheduler_stop, _scheduler_thread, _bot
+    global _scheduler_stop, _scheduler_thread, _bot, _scheduler_running
     _scheduler_stop.set()
+    _scheduler_running = False
     if _bot:
         try:
             _bot.stop()

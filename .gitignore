@@ -67,3 +67,11 @@ server.log
 *.bak3
 *.bak4
 _temp/
+
+# Test files
+*_test.py
+test_*.py
+fix_*.py
+edit_html.py
+start.cmd
+
