@@ -79,3 +79,10 @@ start.cmd
 # Test screenshot
 web_app/test_screenshot.png
 
+
+rewrite_server.py
+web_app/server.py.tmp
+fix_html.py
+fix_*.py
+_write_html.py
+write_html.py

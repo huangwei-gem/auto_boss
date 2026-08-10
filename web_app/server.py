@@ -1,4 +1,5 @@
-"""Boss直聘 · 自动投递 — Web 服务端（多岗位多账号版）
+"""
+Boss直聘 · 自动投递 — Web 服务端（多岗位多账号版）
 
 Flask + Flask-SocketIO 单进程架构。
 任务调度器按账号顺序串行执行（Boss直聘限制：一个cookie只能登在一个浏览器），
@@ -25,19 +26,6 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_DIR = os.path.dirname(BASE_DIR)
 sys.path.insert(0, PROJECT_DIR)
 os.chdir(BASE_DIR)
-
-# 复制配置和数据文件到 web 工作目录（如果不存在）
-for fn in ("chats_log.json", "zhipin_cookies"):
-    src = os.path.join(PROJECT_DIR, "core", fn)
-    dst = os.path.join(BASE_DIR, fn)
-    if os.path.exists(src) and not os.path.exists(dst):
-        shutil.copy2(src, dst)
-
-# 复制 dashboard/ 目录
-src_dir = os.path.join(PROJECT_DIR, "core", "dashboard")
-dst_dir = os.path.join(BASE_DIR, "dashboard")
-if os.path.exists(src_dir) and not os.path.exists(dst_dir):
-    shutil.copytree(src_dir, dst_dir)
 
 from config import load_config, save_config, validate_config, flatten_jobs_for_run
 sys.path.insert(0, os.path.join(PROJECT_DIR, "core"))
@@ -123,6 +111,8 @@ class BotRunner:
             self.log("已完成")
         except Exception as e:
             self.log(f"错误: {e}")
+            import traceback
+            self.log(f"详细: {traceback.format_exc()}")
             self.done = True
 
 
@@ -131,7 +121,7 @@ class BotRunner:
 # ═══════════════════════════════════════════════════════════
 
 class TaskScheduler:
-    """按账号顺序执行任务，同一账号的岗位串行执行（Boss直聘限制：一个cookie只能登在一个浏览器）。"""
+    """按账号顺序执行任务，同一账号的岗位串行执行。"""
 
     def __init__(self, tasks: list[dict], sid: str):
         self.tasks = tasks
@@ -160,7 +150,7 @@ class TaskScheduler:
 
     def run(self):
         total = len(self.tasks)
-        self.log(f"[SCHEDULER] 调度器启动，共 {total} 个任务")
+        self.log(f"[SCHEDULER] 并发启动 {total} 个任务...")
 
         socketio.emit("scheduler_status", {
             "running": True, "total": total, "completed": 0, "current": None,
@@ -174,13 +164,10 @@ class TaskScheduler:
                 account_groups[acc] = []
             account_groups[acc].append(task)
 
-        self.log(f"[SCHEDULER] 共 {len(account_groups)} 个账号，{total} 个岗位")
-
         completed = 0
         for acc_name, acc_tasks in account_groups.items():
             if self._stop.is_set():
                 break
-            self.log(f"[SCHEDULER] 开始处理账号「{acc_name}」的 {len(acc_tasks)} 个岗位")
             for task in acc_tasks:
                 if self._stop.is_set():
                     break
@@ -192,15 +179,18 @@ class TaskScheduler:
                 runner.run()
                 completed += 1
 
+                # 等待任务完成后再启动下一个（同一账号串行）
+                runner.done = False
+                # 简单轮询等待
+                while not runner.done and not self._stop.is_set():
+                    time.sleep(0.5)
+
                 socketio.emit("scheduler_status", {
                     "running": not self._stop.is_set(),
                     "total": total,
                     "completed": completed,
                     "current": None if self._stop.is_set() else {"account": task["account_name"], "query": task["query"], "city": task["city"]},
                 }, to=self.sid)
-
-                if self._stop.is_set():
-                    break
 
         self.log(f"[SCHEDULER] 全部完成！{completed}/{total} 个任务")
         socketio.emit("scheduler_status", {
@@ -209,164 +199,195 @@ class TaskScheduler:
 
 
 # ═══════════════════════════════════════════════════════════
-#  HTTP API — 配置管理
+#  Routes — 页面
 # ═══════════════════════════════════════════════════════════
-
 
 @app.route("/")
 def index():
     return render_template("index.html")
 
+
+# ═══════════════════════════════════════════════════════════
+#  Routes — 配置 API
+# ═══════════════════════════════════════════════════════════
+
 @app.route("/api/config", methods=["GET"])
 def api_get_config():
     global _config
-    return jsonify(_config)
+    return jsonify({"status": "ok", "config": _config})
 
 
 @app.route("/api/config", methods=["PUT"])
 def api_put_config():
     global _config
-    data = request.get_json()
-    if not data:
-        return jsonify({"status": "error", "message": "无效的配置数据"}), 400
-    errors = validate_config(data)
-    if errors:
-        return jsonify({"status": "error", "message": "校验失败", "errors": errors}), 400
-    _config = data
-    save_config(_config)
-    return jsonify({"status": "ok"})
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({"status": "error", "message": "请求体为空"}), 400
+        if not isinstance(data.get("config"), dict):
+            return jsonify({"status": "error", "message": "config 字段必须是对象"}), 400
+
+        new_cfg = data["config"]
+        errors = validate_config(new_cfg)
+        if errors:
+            return jsonify({"status": "error", "message": "；".join(errors)}), 400
+
+        _config = new_cfg
+        save_config(_config)
+        return jsonify({"status": "ok"})
+    except Exception as e:
+        logger.exception("保存配置失败")
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 
 @app.route("/api/config/accounts", methods=["POST"])
 def api_add_account():
     global _config
-    accounts = _config.get("accounts", [])
-    accounts.append({
-        "name": f"账号{len(accounts)+1}",
-        "enabled": True,
-        "cookie_file": "zhipin_cookies.json",
-        "image_files": [],
-        "message_interval_min": 3,
-        "message_interval_max": 8,
-        "jobs": [
-            {
+    try:
+        idx = len(_config["accounts"])
+        _config["accounts"].append({
+            "name": f"账号{idx + 1}",
+            "enabled": True,
+            "cookie_file": "zhipin_cookies.json",
+            "image_files": [],
+            "message_interval_min": 3,
+            "message_interval_max": 8,
+            "jobs": [{
                 "enabled": True,
                 "city": "上海",
                 "query": "数据分析",
                 "scroll_pages": 5,
                 "greeting_message": "您好，我是双一流的本科，应聘数据分析岗位。在校系统学习数据分析相关知识，掌握Excel、基础SQL与数据整理技能，具备数据思维。做事严谨细心，学习能力强，愿意踏实积累。十分认可贵公司，希望能获得面试机会。"
-            }
-        ]
-    })
-    _config["accounts"] = accounts
-    save_config(_config)
-    return jsonify({"status": "ok", "accounts": accounts})
+            }]
+        })
+        save_config(_config)
+        return jsonify({"status": "ok", "accounts": _config["accounts"]})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 
 @app.route("/api/config/accounts/<int:idx>", methods=["DELETE"])
 def api_delete_account(idx):
     global _config
-    accounts = _config.get("accounts", [])
-    if 0 <= idx < len(accounts):
+    try:
+        accounts = _config.get("accounts", [])
+        if idx < 0 or idx >= len(accounts):
+            return jsonify({"status": "error", "message": "账号索引无效"}), 400
         accounts.pop(idx)
-        _config["accounts"] = accounts
         save_config(_config)
         return jsonify({"status": "ok", "accounts": accounts})
-    return jsonify({"status": "error", "message": "索引越界"}), 404
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 
 @app.route("/api/config/accounts/<int:aidx>/jobs", methods=["POST"])
 def api_add_job(aidx):
     global _config
-    accounts = _config.get("accounts", [])
-    if 0 <= aidx < len(accounts):
-        accounts[aidx].setdefault("jobs", []).append({
+    try:
+        accounts = _config.get("accounts", [])
+        if aidx < 0 or aidx >= len(accounts):
+            return jsonify({"status": "error", "message": "账号索引无效"}), 400
+        data = request.get_json() or {}
+        job = {
             "enabled": True,
-            "city": "上海",
-            "query": "新岗位",
-            "scroll_pages": 5,
-            "greeting_message": "您好，希望能获得面试机会。"
-        })
+            "city": data.get("city", "上海"),
+            "query": data.get("query", "数据分析"),
+            "scroll_pages": data.get("scroll_pages", 5),
+            "greeting_message": data.get("greeting_message", "您好，我是双一流的本科，应聘数据分析岗位。在校系统学习数据分析相关知识，掌握Excel、基础SQL与数据整理技能，具备数据思维。做事严谨细心，学习能力强，愿意踏实积累。十分认可贵公司，希望能获得面试机会。"),
+        }
+        accounts[aidx]["jobs"].append(job)
         save_config(_config)
-        return jsonify({"status": "ok", "accounts": accounts})
-    return jsonify({"status": "error", "message": "账号索引越界"}), 404
+        return jsonify({"status": "ok", "jobs": accounts[aidx]["jobs"]})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 
 @app.route("/api/config/accounts/<int:aidx>/jobs/<int:jidx>", methods=["DELETE"])
 def api_delete_job(aidx, jidx):
     global _config
-    accounts = _config.get("accounts", [])
-    if 0 <= aidx < len(accounts):
+    try:
+        accounts = _config.get("accounts", [])
+        if aidx < 0 or aidx >= len(accounts):
+            return jsonify({"status": "error", "message": "账号索引无效"}), 400
         jobs = accounts[aidx].get("jobs", [])
-        if 0 <= jidx < len(jobs):
-            jobs.pop(jidx)
-            save_config(_config)
-            return jsonify({"status": "ok", "accounts": accounts})
-    return jsonify({"status": "error", "message": "索引越界"}), 404
+        if jidx < 0 or jidx >= len(jobs):
+            return jsonify({"status": "error", "message": "岗位索引无效"}), 400
+        jobs.pop(jidx)
+        save_config(_config)
+        return jsonify({"status": "ok", "jobs": jobs})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 
 # ═══════════════════════════════════════════════════════════
-#  HTTP API — 文件上传 / 删除
+#  Routes — 文件上传 / 删除
 # ═══════════════════════════════════════════════════════════
 
 @app.route("/api/upload/image", methods=["POST"])
+@app.route("/api/upload/images", methods=["POST"])
 def api_upload_image():
     """上传作品图片到 dashboard/ 目录，返回文件名列表。"""
-    if "files" not in request.files:
-        return jsonify({"status": "error", "message": "没有上传文件"}), 400
+    dashboard_dir = os.path.join(BASE_DIR, "dashboard")
+    os.makedirs(dashboard_dir, exist_ok=True)
     files = request.files.getlist("files")
-    saved = []
+    if not files:
+        return jsonify({"status": "error", "message": "未选择文件"}), 400
+    uploaded = []
     for f in files:
         if f.filename:
-            ext = os.path.splitext(f.filename)[1] or ".png"
             safe_name = f"{uuid.uuid4().hex[:8]}_{f.filename}"
-            dst = os.path.join(BASE_DIR, "dashboard", safe_name)
-            f.save(dst)
-            saved.append(f"dashboard/{safe_name}")
-    return jsonify({"status": "ok", "files": saved})
+            save_path = os.path.join(dashboard_dir, safe_name)
+            f.save(save_path)
+            uploaded.append(f"dashboard/{safe_name}")
+    return jsonify({"status": "ok", "images": uploaded, "files": uploaded})
 
 
 @app.route("/api/upload/cookie", methods=["POST"])
 def api_upload_cookie():
     """上传 Cookie 文件到工作目录。"""
-    if "file" not in request.files:
-        return jsonify({"status": "error", "message": "没有上传文件"}), 400
-    f = request.files["file"]
-    if f.filename:
-        dst = os.path.join(BASE_DIR, "zhipin_cookies.json")
-        f.save(dst)
-        return jsonify({"status": "ok", "path": "zhipin_cookies.json"})
-    return jsonify({"status": "error", "message": "文件名无效"}), 400
+    f = request.files.get("file")
+    if not f or not f.filename:
+        return jsonify({"status": "error", "message": "未选择文件"}), 400
+    save_path = os.path.join(BASE_DIR, "zhipin_cookies.json")
+    f.save(save_path)
+    return jsonify({"status": "ok", "filename": "zhipin_cookies.json", "path": "zhipin_cookies.json"})
 
 
 @app.route("/api/delete/image", methods=["POST"])
+@app.route("/api/images/delete", methods=["POST"])
 def api_delete_image():
     """删除作品图片文件。"""
     data = request.get_json()
-    path = data.get("path") or data.get("filename") or "" if data else ""
+    path = (data.get("path") or data.get("filename") or "") if data else ""
     if not path:
-        return jsonify({"status": "error", "message": "缺少路径"}), 400
+        return jsonify({"status": "error", "message": "缺少文件路径"}), 400
     full_path = os.path.join(BASE_DIR, path)
     if os.path.exists(full_path) and os.path.isfile(full_path):
         os.remove(full_path)
         return jsonify({"status": "ok"})
+    # Try matching by basename
+    basename = os.path.basename(path)
+    dashboard_dir = os.path.join(BASE_DIR, "dashboard")
+    if os.path.exists(dashboard_dir):
+        for fn in os.listdir(dashboard_dir):
+            if fn == basename:
+                os.remove(os.path.join(dashboard_dir, fn))
+                return jsonify({"status": "ok"})
     return jsonify({"status": "error", "message": "文件不存在"}), 404
 
 
 @app.route("/api/upload/greeting", methods=["POST"])
 def api_upload_greeting():
     """上传打招呼模板文件。"""
-    if "file" not in request.files:
-        return jsonify({"status": "error", "message": "没有上传文件"}), 400
-    f = request.files["file"]
-    if f.filename:
-        content = f.read().decode("utf-8", errors="replace")
-        return jsonify({"status": "ok", "content": content})
-    return jsonify({"status": "error", "message": "文件名无效"}), 400
+    f = request.files.get("file")
+    if not f or not f.filename:
+        return jsonify({"status": "error", "message": "未选择文件"}), 400
+    content = f.read().decode("utf-8").strip()
+    return jsonify({"status": "ok", "greeting": content})
 
 
 # ═══════════════════════════════════════════════════════════
-#  HTTP API — 调度器管理
+#  Routes — 调度器状态
 # ═══════════════════════════════════════════════════════════
 
 @app.route("/api/scheduler/reset", methods=["POST"])
@@ -422,6 +443,8 @@ def on_start_all(data=None):
             scheduler.run()
         except Exception as e:
             logger.error(f"调度器异常: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
             try:
                 emit("bot_log", {"message": f"[SYSTEM] 调度器异常: {e}"}, to=request.sid)
             except Exception:
@@ -492,12 +515,6 @@ def serve_dashboard(filename):
     return abort(404)
 
 
-# ═══════════════════════════════════════════════════════════
-#  入口
-# ═══════════════════════════════════════════════════════════
-
-
-
 @app.route("/api/images/list", methods=["GET"])
 def api_images_list():
     """列出所有作品图片。"""
@@ -510,22 +527,6 @@ def api_images_list():
         if os.path.isfile(fp) and fn.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp')):
             images.append(f"dashboard/{fn}")
     return jsonify({"status": "ok", "images": images})
-
-
-@app.route("/api/images/delete", methods=["POST"])
-def api_images_delete():
-    """删除作品图片文件（前端兼容端点）。"""
-    data = request.get_json()
-    filename = (data.get("filename") or data.get("path") or "") if data else ""
-    if not filename:
-        return jsonify({"status": "error", "message": "缺少文件名"}), 400
-    full_path = os.path.join(BASE_DIR, filename)
-    if os.path.exists(full_path) and os.path.isfile(full_path):
-        os.remove(full_path)
-        return jsonify({"status": "ok"})
-    return jsonify({"status": "error", "message": "文件不存在"}), 404
-
-
 
 
 if __name__ == "__main__":

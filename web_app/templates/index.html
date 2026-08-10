@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Boss直聘 · 自动投递</title>
-<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><rect width=%22100%22 height=%22100%22 rx=%2220%22 fill=%22%231e4bd2%22/><text y=%22.67em%22 font-size=%2260%22 x=%2250%22 text-anchor=%22middle%22 fill=%22%23fff%22 font-family=%22system-ui,sans-serif%22 font-weight=%22700%22>BZ</text></svg>">
+<title>Boss直聘 · AI 自动投递</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><rect width=%22100%22 height=%22100%22 rx=%2220%22 fill=%22%231e4bd2%22/><path d=%22M28 30h44v8H36v12h28v8H36v12h36v8H28z%22 fill=%22%23fff%22/></svg>">
 <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -460,12 +460,9 @@ function renderAccounts() {
 function renderAdvSettings() {
   const b = config.browser || {};
   document.getElementById('advHeadless').className = 'toggle-switch' + (b.headless ? ' on' : '');
-  document.getElementById('advViewportW').value = b.viewport_width || '';
-  document.getElementById('advViewportW').placeholder = '1280';
-  document.getElementById('advViewportH').value = b.viewport_height || '';
-  document.getElementById('advViewportH').placeholder = '800';
-  document.getElementById('advTimeout').value = b.page_load_timeout || '';
-  document.getElementById('advTimeout').placeholder = '30';
+  document.getElementById('advViewportW').value = b.viewport_width ?? 1280;
+  document.getElementById('advViewportH').value = b.viewport_height ?? 800;
+  document.getElementById('advTimeout').value = b.page_load_timeout ?? 30;
   document.getElementById('advUserAgent').value = b.custom_user_agent || '';
   document.getElementById('advUserAgent').placeholder = '留空自动';
   document.getElementById('advProxy').value = b.proxy || '';
@@ -473,23 +470,17 @@ function renderAdvSettings() {
 
   const rl = config.rate_limit || {};
   document.getElementById('advRateLimit').className = 'toggle-switch' + (rl.enabled !== false ? ' on' : '');
-  document.getElementById('advRatePerHour').value = rl.max_per_hour || '';
-  document.getElementById('advRatePerHour').placeholder = '30';
-  document.getElementById('advRatePerDay').value = rl.max_per_day || '';
-  document.getElementById('advRatePerDay').placeholder = '100';
+  document.getElementById('advRatePerHour').value = rl.max_per_hour ?? 30;
+  document.getElementById('advRatePerDay').value = rl.max_per_day ?? 100;
 
   const lg = config.login || {};
-  document.getElementById('advLoginWait').value = lg.wait_timeout || '';
-  document.getElementById('advLoginWait').placeholder = '300';
+  document.getElementById('advLoginWait').value = lg.wait_timeout ?? 300;
   document.getElementById('advClearCookies').className = 'toggle-switch' + (lg.clear_cookies_on_failure !== false ? ' on' : '');
 
   const rt = config.retry || {};
-  document.getElementById('advRetryAttempts').value = rt.max_attempts || '';
-  document.getElementById('advRetryAttempts').placeholder = '3';
-  document.getElementById('advRetryDelay').value = rt.base_delay || '';
-  document.getElementById('advRetryDelay').placeholder = '2';
-  document.getElementById('advRetryBackoff').value = rt.backoff_factor || '';
-  document.getElementById('advRetryBackoff').placeholder = '2';
+  document.getElementById('advRetryAttempts').value = rt.max_attempts ?? 3;
+  document.getElementById('advRetryDelay').value = rt.base_delay ?? 2;
+  document.getElementById('advRetryBackoff').value = rt.backoff_factor ?? 2;
 }
 
 function toggleAdvSection() {
@@ -544,11 +535,9 @@ function onAdvChange() {
 function renderAccountConfig() {
   const a = config.accounts[activeAccountIdx];
   if (!a) return;
-  document.getElementById('accName').value = a.name||'';
-  document.getElementById('accName').placeholder = '主账号';
+  document.getElementById('accName').value = a.name||'主账号';
   document.getElementById('accEnabled').className = 'toggle-switch'+(a.enabled!==false?' on':'');
-  document.getElementById('accCookie').value = a.cookie_file||'';
-  document.getElementById('accCookie').placeholder = 'zhipin_cookies.json';
+  document.getElementById('accCookie').value = a.cookie_file||'zhipin_cookies.json';
   document.getElementById('msgIntervalMin').value = (a.message_interval_min !== undefined && a.message_interval_min !== null) ? a.message_interval_min : 3;
   document.getElementById('msgIntervalMax').value = (a.message_interval_max !== undefined && a.message_interval_max !== null) ? a.message_interval_max : 8;
   renderImageChips();
