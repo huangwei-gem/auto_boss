@@ -1,0 +1,1 @@
+{"action": "evaluate", "args": {"code": "(()=>{const c=document.getElementById(\"imageChips\");return JSON.stringify({hasChips:!!c,chipsHtml:c?c.innerHTML.substring(0,100):\"N/A\"})})()"}, "session": "boss-test-1"}

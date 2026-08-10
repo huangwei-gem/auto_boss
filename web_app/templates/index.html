@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Boss直聘 · AI自动投递助手</title>
-<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><defs><linearGradient id=%22g%22 x1=%220%%22 y1=%220%%22 x2=%22100%%22 y2=%22100%%22><stop offset=%220%%22 stop-color=%22%234a7cff%22/><stop offset=%22100%%22 stop-color=%22%231e4bd2%22/></linearGradient></defs><rect width=%22100%22 height=%22100%22 rx=%2220%22 fill=%22url(%23g)%22/><text x=%2250%22 y=%2268%22 font-size=%2236%22 font-family=%22Arial%22 font-weight=%22bold%22 text-anchor=%22middle%22 fill=%22%23fff%22>📋</text></svg>">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><defs><linearGradient id=%22g%22 x1=%220%%22 y1=%220%%22 x2=%22100%%22 y2=%22100%%22><stop offset=%220%%22 stop-color=%22%234a7cff%22/><stop offset=%22100%%22 stop-color=%22%231e4bd2%22/></linearGradient></defs><rect width=%22100%22 height=%22100%22 rx=%2220%22 fill=%22url(%23g)%22/><text x=%2250%22 y=%2268%22 font-size=%2236%22 font-family=%22Arial%22 font-weight=%22bold%22 text-anchor=%22middle%22 fill=%22%23fff%22>💼</text></svg>">
 <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -400,6 +400,7 @@ let activeAccountIdx = 0;
 const defaultGreeting = "您好，我是双一流的本科，应聘数据分析岗位。在校系统学习数据分析相关知识，掌握Excel、基础SQL与数据整理技能，具备数据思维。做事严谨细心，学习能力强，愿意踏实积累。十分认可贵公司，希望能获得面试机会。";
 let stats = { total: 0, applied: 0, skipped: 0 };
 let availableImages = [];
+  refreshImageList();
 
 function toggleTheme() {
   const html = document.documentElement;
@@ -567,6 +568,7 @@ function onAdvChange() {
   config.retry.max_attempts = parseInt(document.getElementById('advRetryAttempts').value) || 3;
   config.retry.base_delay = parseFloat(document.getElementById('advRetryDelay').value) || 2.0;
   config.retry.backoff_factor = parseFloat(document.getElementById('advRetryBackoff').value) || 2.0;
+  saveConfig();
 
 }
 
@@ -646,6 +648,7 @@ function toggleImageSelect(name) { name = decodeURIComponent(name);
   else { a.image_files.push(name); }
   renderImageGrid();
   renderImageChips();
+  saveConfig();
 }
 
 function renderImageChips() {
