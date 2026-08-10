@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Boss直聘 · AI自动投递助手</title>
-<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><defs><linearGradient id=%22g%22 x1=%220%%22 y1=%220%%22 x2=%22100%%22 y2=%22100%%22><stop offset=%220%%22 stop-color=%22%234a7cff%22/><stop offset=%22100%%22 stop-color=%22%231e4bd2%22/></linearGradient></defs><rect width=%22100%22 height=%22100%22 rx=%2220%22 fill=%22url(%23g)%22/><text x=%2250%22 y=%2268%22 font-size=%2236%22 font-family=%22Arial%22 font-weight=%22bold%22 text-anchor=%22middle%22 fill=%22%23fff%22>🤖</text></svg>">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><defs><linearGradient id=%22g%22 x1=%220%%22 y1=%220%%22 x2=%22100%%22 y2=%22100%%22><stop offset=%220%%22 stop-color=%22%234a7cff%22/><stop offset=%22100%%22 stop-color=%22%231e4bd2%22/></linearGradient></defs><rect width=%22100%22 height=%22100%22 rx=%2220%22 fill=%22url(%23g)%22/><text x=%2250%22 y=%2268%22 font-size=%2236%22 font-family=%22Arial%22 font-weight=%22bold%22 text-anchor=%22middle%22 fill=%22%23fff%22>📋</text></svg>">
 <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -902,11 +902,11 @@ function startAll() {
       setTimeout(() => {
         socket.emit('start_all');
         addLog('SYSTEM','正在启动所有任务...');
-      }, 100);
+      }, 200);
     })
     .catch(e => {
       addLog('ERROR', '启动失败: ' + e.message);
-      if (btn) { btn.disabled = false; btn.textContent = '▶ 启动'; }
+      if (btn) { btn.disabled = false; btn.textContent = '▶ 启动'; btn.style.display = ''; }
     });
 }
 
@@ -917,6 +917,11 @@ function stopAll() {
   if (btn) { btn.disabled = false; btn.textContent = '▶ 启动'; btn.style.display = ''; }
   const stopBtn = document.getElementById('btnStopAll');
   if (stopBtn) { stopBtn.style.display = 'none'; }
+  // 也重置状态点
+  const dot = document.getElementById('sbarDot');
+  if (dot) dot.className = 'status-dot idle';
+  const st = document.getElementById('sbarStatus');
+  if (st) st.textContent = '就绪';
 }
 
 function confirmLogin() { socket.emit('confirm_login'); }
