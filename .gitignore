@@ -51,3 +51,19 @@ memory_file_metadata.json
 .reme_store_v1
 *.weixin-migrate.bak
 agent.json
+
+# Screenshots
+screenshots/
+web_app/screenshots/
+
+# Server logs
+*.log
+server.err.log
+server.log
+
+# Temp files
+*.bak
+*.bak2
+*.bak3
+*.bak4
+_temp/

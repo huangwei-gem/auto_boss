@@ -2,7 +2,7 @@
 Boss直聘 · 自动投递 — Web 服务端（多岗位多账号版）
 
 Flask + Flask-SocketIO 单进程架构。
-任务调度器依次遍历所有启用的账号×岗位组合，
+任务调度器并发执行所有启用的账号×岗位组合，
 每个组合启动一个 BotCore 实例运行。
 """
 import json
@@ -12,6 +12,7 @@ import sys
 import threading
 import base64
 import time
+import uuid
 from typing import Optional
 
 from flask import Flask, render_template, request, jsonify
@@ -44,6 +45,7 @@ from bot_core import BotCore
 # ── Flask 应用 ──
 app = Flask(__name__)
 app.config["SECRET_KEY"] = os.urandom(24).hex()
+app.config["MAX_CONTENT_LENGTH"] = 50 * 1024 * 1024  # 50MB max upload
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode="threading")
 
 # ── 全局状态 ──
@@ -59,11 +61,11 @@ logger = logging.getLogger("boss-web")
 
 
 # ═══════════════════════════════════════════════════════════
-#  任务调度器 — 依次执行每个账号×岗位
+#  任务调度器 — 并发执行每个账号×岗位
 # ═══════════════════════════════════════════════════════════
 
 class TaskScheduler:
-    """并发执行所有任务，每个任务独享一个 BotCore（独立浏览器实例）。"""
+    """按账号顺序执行任务，同一账号的岗位串行执行（Boss直聘限制：一个cookie只能登在一个浏览器）。"""
 
     def __init__(self, tasks: list[dict], sid: str):
         self.tasks = tasks
@@ -95,7 +97,7 @@ class TaskScheduler:
 
     def run(self):
         total = len(self.tasks)
-        self.log(f"[SCHEDULER] 并发启动 {total} 个任务...")
+        self.log(f"[SCHEDULER] 启动调度，共 {total} 个任务")
 
         socketio.emit("scheduler_status", {
             "running": True,
@@ -104,37 +106,38 @@ class TaskScheduler:
             "current": None,
         }, to=self.sid)
 
-        # 并发启动所有任务
-        for idx, task in enumerate(self.tasks):
+        # 按账号分组，同一账号的任务串行执行（Boss直聘限制：一个cookie只能登在一个浏览器）
+        from collections import OrderedDict
+        account_groups = OrderedDict()
+        for task in self.tasks:
+            acc = task["account_name"]
+            if acc not in account_groups:
+                account_groups[acc] = []
+            account_groups[acc].append(task)
+        
+        self.log(f"[SCHEDULER] 共 {len(account_groups)} 个账号，{total} 个岗位")
+        
+        completed = 0
+        for acc_name, acc_tasks in account_groups.items():
             if self._stop.is_set():
                 break
+            self.log(f"[SCHEDULER] 开始处理账号「{acc_name}」的 {len(acc_tasks)} 个岗位")
+            for task in acc_tasks:
+                if self._stop.is_set():
+                    break
+                label = f"{task['account_name']} / {task['query']}({task['city']})"
+                runner = BotRunner(task, self.sid, label)
+                self._runners.append(runner)
+                self.log(f"[SCHEDULER] 启动: {label}")
+                socketio.emit("scheduler_status", {
+                    "running": True,
+                    "total": total,
+                    "completed": completed,
+                    "current": label,
+                }, to=self.sid)
+                runner.run()
+                completed += 1
 
-            label = f"{task['account_name']} / {task['query']}({task['city']})"
-
-            bot_config = {
-                "city": task["city"],
-                "job_query": task["query"],
-                "scroll_pages": task["scroll_pages"],
-                "greeting_message": task["greeting_message"],
-                "image_files": task["image_files"],
-                "message_interval_min": task["message_interval_min"],
-                "message_interval_max": task["message_interval_max"],
-            }
-
-            runner = BotRunner(bot_config, self.sid, label)
-            self._runners.append(runner)
-
-            t = threading.Thread(target=runner.run, daemon=True)
-            self._threads.append(t)
-            t.start()
-
-            self.log(f"[SCHEDULER] ✓ 已启动 [{idx+1}/{total}] {label}")
-
-        # 等待所有线程完成
-        for t in self._threads:
-            t.join()
-
-        completed = len([r for r in self._runners if r.done])
         self.log(f"\n[SCHEDULER] 全部完成！{completed}/{total} 个任务")
         socketio.emit("scheduler_status", {
             "running": False,
@@ -142,183 +145,236 @@ class TaskScheduler:
             "completed": completed,
             "current": None,
         }, to=self.sid)
-        socketio.emit("bot_status", {"running": False}, to=self.sid)
 
 
 # ═══════════════════════════════════════════════════════════
-#  Bot 包装器
+#  单任务运行器
 # ═══════════════════════════════════════════════════════════
 
 class BotRunner:
-    """包装 BotCore，将回调桥接到 SocketIO。"""
+    """包装一个 BotCore 实例，在独立线程中运行。"""
 
-    def __init__(self, config: dict, sid: str, label: str = ""):
-        self.config = config
+    def __init__(self, bot_config: dict, sid: str, label: str):
+        self.bot_config = bot_config
         self.sid = sid
         self.label = label
         self.bot: BotCore | None = None
         self.done = False
 
-    def _prefix(self, msg: str) -> str:
-        if self.label:
-            return f"[{self.label}] {msg}"
-        return msg
-
-    def log_cb(self, msg: str):
-        socketio.emit("bot_log", {"message": self._prefix(msg)}, to=self.sid)
-
-    def screenshot_cb(self, data: bytes):
-        b64 = base64.b64encode(data).decode("utf-8")
-        socketio.emit("bot_screenshot", {"image": b64, "label": self.label}, to=self.sid)
-
-    def progress_cb(self, stats: dict):
-        socketio.emit("bot_progress", {**stats, "label": self.label}, to=self.sid)
-
-    def run(self):
-        try:
-            self.bot = BotCore(
-                config=self.config,
-                log_callback=self.log_cb,
-                screenshot_callback=self.screenshot_cb,
-                progress_callback=self.progress_cb,
-            )
-            self.bot.start()
-        except Exception as e:
-            self.log_cb(f"[SYSTEM] Bot 异常退出: {e}")
-        finally:
-            self.bot = None
-            self.done = True
-
-    def confirm_login(self) -> None:
-        """代理到 BotCore.confirm_login()"""
-        if self.bot:
-            self.bot.confirm_login()
-
-    def check_login_status(self) -> bool:
-        """代理到 BotCore.check_login_status()"""
-        if self.bot:
-            return self.bot.check_login_status()
-        return False
+    def log(self, msg: str):
+        socketio.emit("bot_log", {"message": f"[{self.label}] {msg}"}, to=self.sid)
 
     def stop(self):
         if self.bot:
-            self.bot.stop()
-            self.bot = None
+            try:
+                self.bot.stop()
+            except Exception:
+                pass
+
+    def confirm_login(self):
+        if self.bot:
+            try:
+                self.bot.confirm_login()
+            except Exception:
+                pass
+
+    def check_login_status(self):
+        if self.bot:
+            try:
+                return self.bot.check_login_status()
+            except Exception:
+                pass
+        return False
+
+    def run(self):
+        try:
+            self.log("启动中...")
+            self.bot = BotCore(
+    self.bot_config,
+    log_callback=self.log,
+    screenshot_callback=None,
+    progress_callback=None,
+)
+            socketio.emit("scheduler_status", {
+                "running": True,
+                "current": {"account": self.label.split(" / ")[0], "query": self.label.split(" / ")[1] if " / " in self.label else self.label, "city": ""},
+            }, to=self.sid)
+            self.bot.start()
+            self.done = True
+            self.log("已完成")
+        except Exception as e:
+            self.log(f"错误: {e}")
+            self.done = True
 
 
 # ═══════════════════════════════════════════════════════════
-#  路由
+#  HTTP API — 配置管理
+# ═══════════════════════════════════════════════════════════
+
+@app.route("/api/config", methods=["GET"])
+def api_get_config():
+    global _config
+    return jsonify(_config)
+
+
+@app.route("/api/config", methods=["PUT"])
+def api_put_config():
+    global _config
+    data = request.get_json()
+    if not data:
+        return jsonify({"status": "error", "message": "无效的配置数据"}), 400
+    errors = validate_config(data)
+    if errors:
+        return jsonify({"status": "error", "message": "校验失败", "errors": errors}), 400
+    _config = data
+    save_config(_config)
+    return jsonify({"status": "ok"})
+
+
+@app.route("/api/config/accounts", methods=["POST"])
+def api_add_account():
+    global _config
+    accounts = _config.get("accounts", [])
+    accounts.append({
+        "name": f"账号{len(accounts)+1}",
+        "enabled": True,
+        "cookie_file": "zhipin_cookies.json",
+        "image_files": [],
+        "message_interval_min": 3,
+        "message_interval_max": 8,
+        "jobs": [
+            {
+                "enabled": True,
+                "city": "上海",
+                "query": "AI产品经理",
+                "scroll_pages": 5,
+                "greeting_message": "您好，希望能获得面试机会。"
+            }
+        ]
+    })
+    _config["accounts"] = accounts
+    save_config(_config)
+    return jsonify({"status": "ok", "accounts": accounts})
+
+
+@app.route("/api/config/accounts/<int:idx>", methods=["DELETE"])
+def api_delete_account(idx):
+    global _config
+    accounts = _config.get("accounts", [])
+    if idx < 0 or idx >= len(accounts):
+        return jsonify({"status": "error", "message": "索引越界"}), 404
+    accounts.pop(idx)
+    _config["accounts"] = accounts
+    save_config(_config)
+    return jsonify({"status": "ok", "accounts": accounts})
+
+
+# ═══════════════════════════════════════════════════════════
+#  HTTP API — 文件上传
+# ═══════════════════════════════════════════════════════════
+
+DASHBOARD_DIR = os.path.join(BASE_DIR, "dashboard")
+os.makedirs(DASHBOARD_DIR, exist_ok=True)
+
+
+@app.route("/api/upload/images", methods=["POST"])
+def api_upload_images():
+    """上传作品图片，支持多文件。"""
+    if "files" not in request.files:
+        return jsonify({"status": "error", "message": "没有上传文件"}), 400
+
+    files = request.files.getlist("files")
+    if not files or all(f.filename == "" for f in files):
+        return jsonify({"status": "error", "message": "文件为空"}), 400
+
+    uploaded = []
+    for f in files:
+        if f.filename == "":
+            continue
+        # 安全处理文件名：添加 UUID 前缀防止重名覆盖
+        _, ext = os.path.splitext(f.filename)
+        safe_name = f"{uuid.uuid4().hex[:8]}_{f.filename}"
+        save_path = os.path.join(DASHBOARD_DIR, safe_name)
+        f.save(save_path)
+        uploaded.append(f"dashboard/{safe_name}")
+
+    logger.info(f"上传了 {len(uploaded)} 张图片: {uploaded}")
+    return jsonify({"status": "ok", "files": uploaded})
+
+
+@app.route("/api/upload/cookie", methods=["POST"])
+def api_upload_cookie():
+    """上传 Cookie 文件。"""
+    if "file" not in request.files:
+        return jsonify({"status": "error", "message": "没有上传文件"}), 400
+
+    f = request.files["file"]
+    if f.filename == "":
+        return jsonify({"status": "error", "message": "文件为空"}), 400
+
+    # 用原文件名保存
+    save_path = os.path.join(BASE_DIR, f.filename)
+    f.save(save_path)
+
+    logger.info(f"上传了 Cookie 文件: {f.filename}")
+    return jsonify({"status": "ok", "filename": f.filename})
+
+
+@app.route("/api/images/list", methods=["GET"])
+def api_list_images():
+    """列出 dashboard 目录下所有图片。"""
+    images = []
+    if os.path.exists(DASHBOARD_DIR):
+        for fn in sorted(os.listdir(DASHBOARD_DIR)):
+            if fn.lower().endswith((".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp")):
+                images.append(f"dashboard/{fn}")
+    return jsonify({"status": "ok", "images": images})
+
+
+# ═══════════════════════════════════════════════════════════
+#  HTTP API — 仪表盘/统计
+# ═══════════════════════════════════════════════════════════
+
+@app.route("/api/images/delete", methods=["POST"])
+def api_delete_image():
+    """删除上传的作品图片。"""
+    data = request.get_json()
+    if not data or "filename" not in data:
+        return jsonify({"status": "error", "message": "缺少文件名"}), 400
+    
+    filename = data["filename"]
+    if not filename.startswith("dashboard/"):
+        return jsonify({"status": "error", "message": "非法文件路径"}), 400
+    
+    relative_path = filename.replace("dashboard/", "", 1)
+    if ".." in relative_path or "/" in relative_path or "\\" in relative_path:
+        return jsonify({"status": "error", "message": "非法文件名"}), 400
+    
+    file_path = os.path.join(DASHBOARD_DIR, relative_path)
+    if os.path.exists(file_path):
+        os.remove(file_path)
+        logger.info(f"删除图片: {file_path}")
+        return jsonify({"status": "ok", "message": "已删除"})
+    else:
+        return jsonify({"status": "error", "message": "文件不存在"}), 404
+
+
+@app.route("/api/stats", methods=["GET"])
+def api_stats():
+    return jsonify({
+        "total": 0,
+        "applied": 0,
+        "skipped": 0,
+    })
+
+
+# ═══════════════════════════════════════════════════════════
+#  页面路由
 # ═══════════════════════════════════════════════════════════
 
 @app.route("/")
 def index():
     return render_template("index.html")
-
-
-@app.route("/api/config", methods=["GET"])
-def api_get_config():
-    return jsonify(_config)
-
-
-@app.route("/api/config", methods=["PUT"])
-def api_save_config():
-    global _config
-    data = request.get_json(force=True)
-    errors = validate_config(data)
-    if errors:
-        return jsonify({"status": "error", "errors": errors}), 400
-    _config = data
-    save_config(_config)
-    return jsonify({"status": "ok", "config": _config})
-
-
-@app.route("/api/config/accounts", methods=["POST"])
-def api_add_account():
-    """添加新账号（空模板）。"""
-    global _config
-    new_account = {
-        "name": f"账号{len(_config.get('accounts', [])) + 1}",
-        "enabled": True,
-        "cookie_file": f"zhipin_cookies_{len(_config.get('accounts', [])) + 1}.json",
-        "image_files": [],
-        "message_interval_min": 3,
-        "message_interval_max": 8,
-        "jobs": [{
-            "enabled": True,
-            "city": "上海",
-            "query": "",
-            "scroll_pages": 5,
-            "greeting_message": "您好，希望能获得面试机会。",
-        }],
-    }
-    _config.setdefault("accounts", []).append(new_account)
-    save_config(_config)
-    return jsonify({"status": "ok", "accounts": _config["accounts"]})
-
-
-@app.route("/api/config/accounts/<int:ai>", methods=["DELETE"])
-def api_delete_account(ai):
-    """删除账号。"""
-    global _config
-    accs = _config.get("accounts", [])
-    if 0 <= ai < len(accs):
-        accs.pop(ai)
-        save_config(_config)
-        return jsonify({"status": "ok", "accounts": accs})
-    return jsonify({"status": "error", "errors": ["账号索引无效"]}), 400
-
-
-@app.route("/api/config/accounts/<int:ai>/jobs", methods=["POST"])
-def api_add_job(ai):
-    """为指定账号添加岗位。"""
-    global _config
-    accs = _config.get("accounts", [])
-    if not (0 <= ai < len(accs)):
-        return jsonify({"status": "error", "errors": ["账号索引无效"]}), 400
-    new_job = {
-        "enabled": True,
-        "city": accs[ai].get("city", "上海") if "jobs" not in accs[ai] else "上海",
-        "query": "",
-        "scroll_pages": 5,
-        "greeting_message": "您好，希望能获得面试机会。",
-    }
-    accs[ai].setdefault("jobs", []).append(new_job)
-    save_config(_config)
-    return jsonify({"status": "ok", "accounts": accs})
-
-
-@app.route("/api/config/accounts/<int:ai>/jobs/<int:ji>", methods=["DELETE"])
-def api_delete_job(ai, ji):
-    """删除岗位。"""
-    global _config
-    accs = _config.get("accounts", [])
-    if 0 <= ai < len(accs):
-        jobs = accs[ai].get("jobs", [])
-        if 0 <= ji < len(jobs):
-            jobs.pop(ji)
-            save_config(_config)
-            return jsonify({"status": "ok", "accounts": accs})
-    return jsonify({"status": "error", "errors": ["索引无效"]}), 400
-
-
-@app.route("/api/images", methods=["GET"])
-def api_list_images():
-    """列出可用图片附件。"""
-    img_dir = os.path.join(BASE_DIR, "dashboard")
-    files = []
-    if os.path.exists(img_dir):
-        for f in sorted(os.listdir(img_dir)):
-            if f.lower().endswith((".png", ".jpg", ".jpeg", ".gif", ".webp")):
-                files.append(f)
-    return jsonify(files)
-
-
-@app.route("/api/status")
-def api_status():
-    """当前运行状态。"""
-    global _scheduler_thread
-    running = _scheduler_thread is not None and _scheduler_thread.is_alive()
-    return jsonify({"running": running})
 
 
 # ═══════════════════════════════════════════════════════════
@@ -358,9 +414,11 @@ def on_start_all(data=None):
     _bot = scheduler  # 使 confirm_login / check_login 能到达当前 BotCore
 
     def _run_scheduler():
-        scheduler.run()
-        global _scheduler_thread
-        _scheduler_thread = None
+        try:
+            scheduler.run()
+        finally:
+            global _scheduler_thread
+            _scheduler_thread = None
 
     _scheduler_thread = threading.Thread(target=_run_scheduler, daemon=True)
     _scheduler_thread.start()
@@ -369,9 +427,17 @@ def on_start_all(data=None):
 @socketio.on("stop_all")
 def on_stop_all():
     """停止调度器。"""
-    global _scheduler_stop
+    global _scheduler_stop, _scheduler_thread, _bot
     _scheduler_stop.set()
-    # BotRunner 内部的 bot.stop 由 scheduler.stop 触发
+    if _bot:
+        try:
+            _bot.stop()
+        except Exception:
+            pass
+    # Wait briefly for scheduler thread to finish
+    if _scheduler_thread and _scheduler_thread.is_alive():
+        _scheduler_thread.join(timeout=3)
+    _scheduler_thread = None
     emit("bot_log", {"message": "[SYSTEM] 正在停止调度器..."})
     emit("bot_status", {"running": False})
     emit("scheduler_status", {"running": False}, to=request.sid)
@@ -379,11 +445,7 @@ def on_stop_all():
 
 @socketio.on("start_bot")
 def on_start_bot(data):
-    """
-    兼容旧版：单任务快速启动。
-    如果 data 中有 account/job 索引则跑特定任务，
-    否则使用配置中的第一个启用的任务。
-    """
+    """兼容旧版：单任务快速启动。"""
     global _bot, _bot_thread
 
     if _bot_thread and _bot_thread.is_alive():
@@ -395,7 +457,6 @@ def on_start_bot(data):
         emit("bot_log", {"message": "[SYSTEM] 没有启用的任务"})
         return
 
-    # 选择任务
     task_idx = 0
     if data and "task_index" in data:
         task_idx = data["task_index"]
@@ -405,18 +466,9 @@ def on_start_bot(data):
 
     task = tasks[task_idx]
 
-    bot_config = {
-        "city": task["city"],
-        "job_query": task["query"],
-        "scroll_pages": task["scroll_pages"],
-        "greeting_message": task["greeting_message"],
-        "image_files": task["image_files"],
-        "message_interval_min": task["message_interval_min"],
-        "message_interval_max": task["message_interval_max"],
-    }
 
     label = f"{task['account_name']} / {task['query']}({task['city']})"
-    runner = BotRunner(bot_config, request.sid, label)
+    runner = BotRunner(task, request.sid, label)
     _bot = runner
 
     emit("bot_status", {"running": True})
@@ -457,6 +509,31 @@ def on_check_login():
 
 
 # ═══════════════════════════════════════════════════════════
+#  Static file serving for dashboard images
+# ═══════════════════════════════════════════════════════════
+
+# Dashboards images are served from /dashboard/ path
+# Flask automatically serves static files from the 'static' folder
+# We need to serve the dashboard directory as well
+import mimetypes
+
+@app.route("/dashboard/<path:filename>")
+def serve_dashboard(filename):
+    return app.send_static_file_or_404(os.path.join("dashboard", filename))
+
+# Helper to send static file or 404
+def send_static_file_or_404(filepath):
+    full_path = os.path.join(BASE_DIR, filepath)
+    if os.path.exists(full_path) and os.path.isfile(full_path):
+        from flask import send_file
+        return send_file(full_path)
+    from flask import abort
+    return abort(404)
+
+app.send_static_file_or_404 = staticmethod(send_static_file_or_404)
+
+
+# ═══════════════════════════════════════════════════════════
 #  入口
 # ═══════════════════════════════════════════════════════════
 
@@ -465,3 +542,9 @@ if __name__ == "__main__":
     print(f"  启动地址: http://127.0.0.1:5000")
     print(f"  {'='*40}")
     socketio.run(app, host="127.0.0.1", port=5000, debug=False, allow_unsafe_werkzeug=True)
+
+
+
+
+
+

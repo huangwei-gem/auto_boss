@@ -16,16 +16,17 @@ from functools import wraps
 from io import BytesIO
 from typing import Optional, Callable
 
-from DrissionPage import ChromiumPage
+from DrissionPage import ChromiumPage, ChromiumOptions
 
 # ─────────────────────────────────────────────
-# 常量
+# 路径常量
 # ─────────────────────────────────────────────
 
 COOKIES_FILE = "zhipin_cookies"
 CHATS_LOG_FILE = "chats_log.json"
 
-USER_AGENTS = [
+# 默认 User-Agent 列表（当 config 中未指定自定义 UA 时随机使用）
+FALLBACK_USER_AGENTS = [
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
     "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
@@ -38,32 +39,23 @@ USER_AGENTS = [
 
 # CSS 选择器常量
 SELECTOR_NAV = ".user-nav"
-SELECTOR_START_CHAT = ".btn btn-startchat"  # 注意：多 class 用空格（参照源文件）
-SELECTOR_START_CHAT_TEXT = "立即沟通"       # 按文本找
-SELECTOR_START_CHAT_CONTINUE = "继续沟通"   # 之前沟通过的提示
+SELECTOR_START_CHAT_TEXT = "立即沟通"
+SELECTOR_START_CHAT_CONTINUE = "继续沟通"
 SELECTOR_INPUT_AREA = ".input-area"
 SELECTOR_SEND_BTN = ".send-message"
 SELECTOR_CLOSE = ".icon-close"
-SELECTOR_IMG_UPLOAD = ".toolbar-btn-content icon btn-sendimg tooltip tooltip-top"  # 参照源文件（空格分隔多 class）
 SELECTOR_BOSS_ACTIVE = ".boss-active-time"
 SELECTOR_SCALE = ".icon-scale"
 SELECTOR_REC_JOB_LIST = ".rec-job-list"
 SELECTOR_JOB_NAME = ".job-name"
-
-MAX_RETRIES = 3
-RETRY_BASE_DELAY = 2.0  # seconds
-
-# 操作频率限制
-MAX_APPLIES_PER_HOUR = 30
-MAX_APPLIES_PER_DAY = 100
 
 # ─────────────────────────────────────────────
 # 重试装饰器
 # ─────────────────────────────────────────────
 
 
-def retry(max_attempts: int = MAX_RETRIES, base_delay: float = RETRY_BASE_DELAY):
-    """重试装饰器：捕获 Exception，指数退避重试，日志记录重试次数。"""
+def retry(max_attempts: int = 3, base_delay: float = 2.0, backoff_factor: float = 2.0):
+    """重试装饰器：捕获 Exception，指数退避重试。"""
     def decorator(func):
         @wraps(func)
         def wrapper(self, *args, **kwargs):
@@ -74,14 +66,13 @@ def retry(max_attempts: int = MAX_RETRIES, base_delay: float = RETRY_BASE_DELAY)
                 except Exception as e:
                     last_exc = e
                     if attempt < max_attempts:
-                        delay = base_delay * (2 ** (attempt - 1)) + random.uniform(0, 1)
-                        self._log("WARN", f"  {func.__name__} 第 {attempt}/{max_attempts} 次失败: {e}，{delay:.1f}s 后重试")
+                        delay = base_delay * (backoff_factor ** (attempt - 1)) + random.uniform(0, 1)
+                        self._log("WARN", f"重试 {attempt}/{max_attempts}: {e}，等待 {delay:.1f}s")
                         time.sleep(delay)
-                    else:
-                        self._log("ERROR", f"  {func.__name__} 重试 {max_attempts} 次均失败: {e}")
-            raise last_exc  # type: ignore[misc]
+            raise last_exc  # type: ignore
         return wrapper
     return decorator
+
 
 # ─────────────────────────────────────────────
 # BotCore
@@ -89,168 +80,124 @@ def retry(max_attempts: int = MAX_RETRIES, base_delay: float = RETRY_BASE_DELAY)
 
 
 class BotCore:
+    """Boss直聘自动投递机器人核心类。"""
+
     def __init__(
         self,
         config: dict,
-        log_callback: Callable[[str], None],
-        screenshot_callback: Optional[Callable[[bytes], None]] = None,
-        progress_callback: Optional[Callable[[dict], None]] = None,
+        log_callback: Optional[Callable] = None,
+        screenshot_callback: Optional[Callable] = None,
+        progress_callback: Optional[Callable] = None,
     ):
-        self.config = config
+        self.config = config  # 展平后的单任务配置
         self.log_cb = log_callback
         self.screenshot_cb = screenshot_callback
         self.progress_cb = progress_callback
+
+        # 运行状态
         self.running = False
-        self.dp: Optional[ChromiumPage] = None
-        self._login_event = threading.Event()
-        self._screenshot_thread: Optional[threading.Thread] = None
-        self._stop_screenshot = threading.Event()
         self._is_logged_in = False
-        self.city_code: Optional[str] = None
-        self.jobs: list[dict] = []
-        self._sent_jobs: set[str] = set()
+        self._login_event = threading.Event()
+        self._stop_screenshot = threading.Event()
+        self._screenshot_thread: Optional[threading.Thread] = None
 
-    # ── helpers ──
+        # 统计
+        self.applied_count = 0
+        self.skipped_count = 0
+        self.total_jobs = 0
 
-    def _log(self, level: str, msg: str) -> None:
-        self.log_cb(f"[{level}] {msg}")
+        # 浏览器实例
+        self.dp: Optional[ChromiumPage] = None
 
-    @staticmethod
-    def _random_delay(min_s: float, max_s: float) -> None:
-        """随机延时 + 额外高斯 jitter 以防特征检测。"""
-        base = random.uniform(min_s, max_s)
-        jitter = random.gauss(0, base * 0.15)  # ±15% 高斯抖动
-        total = max(0.5, base + jitter)
-        time.sleep(total)
+        # 从配置读取参数（含默认值兜底）
+        self._load_config_params()
 
-    @staticmethod
-    def _random_ua() -> str:
-        return random.choice(USER_AGENTS)
+    def _load_config_params(self):
+        """从 config 读取所有可调参数，不存在的字段用 Python 硬编码默认值兜底。"""
+        # 浏览器
+        browser_cfg = self.config.get("browser", {})
+        self._headless = browser_cfg.get("headless", False)
+        self._viewport_width = browser_cfg.get("viewport_width", 1280)
+        self._viewport_height = browser_cfg.get("viewport_height", 800)
+        self._page_load_timeout = browser_cfg.get("page_load_timeout", 30)
+        self._custom_user_agent = browser_cfg.get("custom_user_agent", "")
+        self._proxy = browser_cfg.get("proxy", "")
 
-    # ── 去重管理 ──
+        # 登录
+        login_cfg = self.config.get("login", {})
+        self._login_wait_timeout = login_cfg.get("wait_timeout", 300)
+        self._clear_cookies_on_failure = login_cfg.get("clear_cookies_on_failure", True)
 
-    def _load_sent_jobs(self) -> set[str]:
-        """加载历史已投递 job URL 集合。"""
-        if os.path.exists(CHATS_LOG_FILE):
-            try:
-                with open(CHATS_LOG_FILE, "r", encoding="utf-8") as f:
-                    data = json.load(f)
-                if isinstance(data, list):
-                    return set(data)
-            except (json.JSONDecodeError, OSError):
-                pass
-        return set()
+        # 频率限制
+        rl_cfg = self.config.get("rate_limit", {})
+        self._rate_limit_enabled = rl_cfg.get("enabled", True)
+        self._max_per_hour = rl_cfg.get("max_per_hour", 30)
+        self._max_per_day = rl_cfg.get("max_per_day", 100)
 
-    def _save_sent_jobs(self) -> None:
-        with open(CHATS_LOG_FILE, "w", encoding="utf-8") as f:
-            json.dump(sorted(self._sent_jobs), f, ensure_ascii=False, indent=2)
+        # 重试
+        retry_cfg = self.config.get("retry", {})
+        self._retry_max = retry_cfg.get("max_attempts", 3)
+        self._retry_base_delay = retry_cfg.get("base_delay", 2.0)
+        self._retry_backoff = retry_cfg.get("backoff_factor", 2.0)
 
-    # ── Cookie 管理 ──
+        # 截图
+        shot_cfg = self.config.get("screenshot", {})
+        self._screenshot_enabled = shot_cfg.get("enabled", True)
+        self._screenshot_interval = shot_cfg.get("interval", 3.0)
 
-    def _load_cookies(self) -> bool:
-        """加载已保存 Cookie 并注入浏览器，成功返回 True。"""
-        if not os.path.exists(COOKIES_FILE):
-            return False
-        try:
-            with open(COOKIES_FILE, "r", encoding="utf-8") as f:
-                cookies = json.load(f)
-            if not cookies:
-                return False
-            self.dp.set.cookies(cookies)
-            self._log("INFO", f"已加载 {len(cookies)} 条 Cookie")
-            return True
-        except (json.JSONDecodeError, OSError) as e:
-            self._log("WARN", f"Cookie 加载失败: {e}")
-            return False
+        # 任务参数
+        self._min_interval = self.config.get("message_interval_min", 3)
+        self._max_interval = self.config.get("message_interval_max", 8)
+        self._scroll_pages = self.config.get("scroll_pages", 5)
+        self._city = self.config.get("city", "上海")
+        self._query = self.config.get("query", "")
+        self._greeting_message = self.config.get("greeting_message", "")
+        self._cookie_file = self.config.get("cookie_file", "zhipin_cookies.json")
+        self._image_files = self.config.get("image_files", [])
 
-    def _save_cookies(self) -> None:
-        try:
-            with open(COOKIES_FILE, "w", encoding="utf-8") as f:
-                json.dump(self.dp.cookies(), f, ensure_ascii=False, indent=2)
-            self._log("INFO", "Cookie 已保存")
-        except OSError as e:
-            self._log("WARN", f"Cookie 保存失败: {e}")
+    # ── 日志 / 进度 ──
 
-    def _clear_cookies(self) -> None:
-        """清除 Cookie 文件（用于登录失效时）。"""
-        if os.path.exists(COOKIES_FILE):
-            os.remove(COOKIES_FILE)
-            self._log("INFO", "Cookie 已清除")
+    def _log(self, level: str, msg: str):
+        if self.log_cb:
+            self.log_cb(f"[{level}] {msg}")
 
-    # ── 频率限制 ──
-
-    def _check_rate_limit(self) -> bool:
-        """检查是否超过频率限制。True = 可以继续。"""
-        today_applies = sum(1 for url in self._sent_jobs if url)
-        if today_applies >= MAX_APPLIES_PER_DAY:
-            self._log("WARN", f"已达每日投递上限 {MAX_APPLIES_PER_DAY}，停止投递")
-            return False
-        return True
-
-    # ── 公开 API ──
-
-    def _report_progress(self, total: int, applied: int, skipped: int) -> None:
-        """将投递进度传回 UI。"""
-        if self.progress_cb:
+    def _report_progress(self):
+        if self.progress_cb and self.total_jobs > 0:
             self.progress_cb({
-                "total": total,
-                "applied": applied,
-                "skipped": skipped,
-                "remaining": max(0, total - applied - skipped),
+                "total": self.total_jobs,
+                "applied": self.applied_count,
+                "skipped": self.skipped_count,
             })
 
-    def start(self) -> None:
+    # ── 启动 / 停止 ──
+
+    def start(self):
         self.running = True
-        self._sent_jobs = self._load_sent_jobs()
-        self._log("INFO", f"已加载 {len(self._sent_jobs)} 条历史投递记录")
-
         try:
-            self.dp = ChromiumPage()
-            # 设置 User-Agent
-            self.dp.set.user_agent(self._random_ua())
-
-            self._step_login()
-            if not self.running or not self._is_logged_in:
-                return
-            self._step_fetch_cities()
-            if not self.running:
-                return
-            self._step_search_jobs()
-            if not self.running:
-                return
-            self._start_screenshot_loop()
-            self._step_browse_jobs()
-            self._log("SUCCESS", "全部完成！")
+            self._run()
         except Exception as e:
-            self._log("ERROR", f"异常终止: {e}")
+            self._log("ERROR", f"Bot 异常退出: {e}")
         finally:
             self.running = False
             self._stop_screenshot.set()
-            if self._screenshot_thread and self._screenshot_thread.is_alive():
-                self._screenshot_thread.join(timeout=5)
             if self.dp:
                 try:
                     self.dp.quit()
                 except Exception:
                     pass
 
-    def stop(self) -> None:
+    def stop(self):
         self.running = False
-        self._login_event.set()
-        self._stop_screenshot.set()
 
     def confirm_login(self) -> None:
-        """UI 回调：用户确认已登录。"""
         self._login_event.set()
 
     def check_login_status(self) -> bool:
-        """检查当前是否已登录。"""
         if not self.dp:
             return False
         try:
             self.dp.get("https://www.zhipin.com")
             self._random_delay(2, 5)
-            # 尝试多个选择器检测登录状态以增加鲁棒性
             for selector in (SELECTOR_NAV, ".header-login-btn"):
                 nav_ele = self.dp.ele(selector, timeout=3)
                 if nav_ele:
@@ -262,9 +209,58 @@ class BotCore:
         except Exception:
             return False
 
+    # ── 核心运行流程 ──
+
+    def _run(self):
+        self._log("INFO", f"🔍 搜索: {self._city} · {self._query}")
+
+        # 设置浏览器 User-Agent
+        if self._custom_user_agent:
+            ua = self._custom_user_agent
+        else:
+            ua = random.choice(FALLBACK_USER_AGENTS)
+        self._log("INFO", f"User-Agent: {ua[:60]}...")
+
+        # 配置浏览器选项
+        co = ChromiumOptions()
+        co.set_user_agent(ua)
+        if self._proxy:
+            co.set_proxy(self._proxy)
+        if self._headless:
+            co.headless(True)
+
+        # 启动浏览器
+        self._log("INFO", "正在启动浏览器...")
+        self.dp = ChromiumPage(addr_or_opts=co)
+        if self._page_load_timeout:
+            self.dp.set.timeouts(base=self._page_load_timeout)
+
+        # 设置视口大小
+        try:
+            self.dp.run_js(f"window.resizeTo({self._viewport_width}, {self._viewport_height})")
+        except Exception:
+            pass
+
+        # 启动截图循环
+        if self._screenshot_enabled:
+            self._start_screenshot_loop()
+
+        # 步骤 1: 登录
+        self._step_login()
+        if not self.running:
+            return
+
+        # 步骤 2: 搜索岗位
+        self._step_search_jobs()
+        if not self.running:
+            return
+
+        # 步骤 3: 遍历投递
+        self._step_browse_jobs()
+
     # ── 截图循环 ──
 
-    def _start_screenshot_loop(self) -> None:
+    def _start_screenshot_loop(self):
         def _loop():
             while not self._stop_screenshot.is_set() and self.running and self.dp:
                 try:
@@ -274,18 +270,17 @@ class BotCore:
                         self.screenshot_cb(screenshot_data)
                 except Exception:
                     pass
-                self._stop_screenshot.wait(timeout=3)
+                self._stop_screenshot.wait(timeout=self._screenshot_interval)
         self._screenshot_thread = threading.Thread(target=_loop, daemon=True)
         self._screenshot_thread.start()
 
     # ── 步骤：登录 ──
 
-    def _step_login(self) -> None:
+    def _step_login(self):
         self._log("INFO", "正在打开 Boss 直聘首页...")
         self.dp.get("https://www.zhipin.com")
         self._random_delay(2, 3)
 
-        # 先尝试加载 Cookie 恢复会话
         if self._load_cookies():
             self.dp.refresh()
             self._random_delay(3, 4)
@@ -309,104 +304,63 @@ class BotCore:
         self.dp.get("https://www.zhipin.com/web/user/?ka=header-login")
 
         self._login_event.clear()
-        logged_in = self._login_event.wait(timeout=300)
+        logged_in = self._login_event.wait(timeout=self._login_wait_timeout)
 
         if not self.running:
             self._log("INFO", "用户取消登录")
             return
 
         if not logged_in:
-            self._log("WARN", "登录等待超时（5分钟），请检查后重试")
+            self._log("WARN", f"登录等待超时（{self._login_wait_timeout}秒），请检查后重试")
             return
 
-        self._save_cookies()
+        self._log("INFO", "登录成功")
         self._is_logged_in = True
-        self._log("INFO", "登录状态已保存")
+        self._save_cookies()
 
-    # ── 步骤：获取城市 ──
+    # ── 步骤：搜索 ──
 
-    @retry(max_attempts=2, base_delay=2.0)
-    def _step_fetch_cities(self) -> None:
-        self._log("INFO", "刷新页面获取城市数据...")
-        city_dict = {}
+    def _step_search_jobs(self):
+        city = self._city
+        query = self._query
 
-        # 关键：必须先在 refresh 前开始监听，否则 data/city.json 的请求已发出，
-        # listen.steps() 将永远等不到匹配的包而卡死
-        self.dp.listen.start("data/city.json")
-        self.dp.refresh()
-        self._random_delay(2, 3)
-
-        # 用 wait() 代替 steps() — 支持超时，防止无限阻塞
-        packet = self.dp.listen.wait(timeout=15)
-        if packet is None:
-            self._log("WARN", "获取城市数据超时，尝试备用方案...")
-            # 备用：从页面 DOM 中提取热门城市列表
-            city_eles = self.dp.eles(".city-list .city-item", timeout=5)
-            if city_eles:
-                for ele in city_eles:
-                    name = ele.text.strip()
-                    code = ele.attr("data-code")
-                    if name and code:
-                        city_dict[name] = code
-                self._log("INFO", f"从 DOM 提取了 {len(city_dict)} 个城市")
-            else:
-                # 降级方案：直接尝试硬编码的热门城市 code
-                self._log("INFO", "降级方案：使用内置热门城市列表")
-                city_dict = {
-                    "北京": "101010100",
-                    "上海": "101020100",
-                    "广州": "101280101",
-                    "深圳": "101280601",
-                    "杭州": "101210101",
-                    "成都": "101270101",
-                    "武汉": "101200101",
-                    "南京": "101190101",
-                    "西安": "101110101",
-                    "苏州": "101190401",
-                }
-        else:
-            res = packet.response.body
-            city_list = res.get("zpData", {}).get("hotCityList", [])
-            for city in city_list:
-                city_dict[city["name"]] = city["code"]
-        self.dp.listen.stop()
-
-        self._log("INFO", f"已获取 {len(city_dict)} 个城市数据")
-
-        target_city = self.config["city"]
-        if target_city not in city_dict:
-            self._log("ERROR", f"城市 '{target_city}' 不在热门城市中，可选: {list(city_dict.keys())[:10]}...")
-            raise ValueError(f"未知城市: {target_city}")
-
-        self.city_code = city_dict[target_city]
-        self._log("INFO", f"目标城市: {target_city} (code={self.city_code})")
-
-    # ── 步骤：搜索岗位 ──
-
-    def _step_search_jobs(self) -> None:
-        query = self.config.get("job_query", "")
-        scroll_pages = self.config.get("scroll_pages", 5)
-
-        if not query:
-            self._log("ERROR", "岗位关键词为空")
-            self.jobs = []
+        if not city or not query:
+            self._log("ERROR", "城市或搜索关键词为空")
             return
 
-        url = (
-            f"https://www.zhipin.com/web/geek/jobs?"
-            f"query={query}&city={self.city_code}&industry=&position="
-        )
-        self._log("INFO", f"搜索岗位: {query}")
-        self.dp.get(url)
-        self._random_delay(2, 3)
+        # 跳转城市
+        self._log("INFO", f"正在切换到城市: {city}")
+        try:
+            self.dp.get("https://www.zhipin.com/web/geek/job?city=100010000")
+            self._random_delay(1, 2)
+            self.dp.run_js(
+                f"window.location.href='https://www.zhipin.com/web/geek/job?query={query}&city=100010000';"
+            )
+            self._random_delay(1, 2)
+        except Exception:
+            pass
 
+        # 解析城市 ID
+        city_id = self._get_city_id(city)
+        if not city_id:
+            self._log("WARN", f"未找到城市「{city}」的 ID，使用默认城市")
+            city_id = "100010000"
+
+        search_url = (
+            f"https://www.zhipin.com/web/geek/job?"
+            f"query={query}&city={city_id}"
+        )
+        self._log("INFO", f"搜索 URL: {search_url}")
+        self.dp.get(search_url)
+        self._random_delay(2, 4)
+
+        scroll_pages = self._scroll_pages
         self._log("INFO", f"滚动页面 {scroll_pages} 次加载更多职位...")
         for i in range(scroll_pages):
             if not self.running:
                 return
             try:
                 self.dp.scroll.to_bottom()
-                # 每次滚动的延时逐渐增大，模拟人类浏览行为
                 scroll_delay = random.uniform(2.0, 3.5) + i * random.uniform(0.2, 0.5)
                 self._random_delay(scroll_delay, scroll_delay + 1.5)
             except Exception:
@@ -460,168 +414,259 @@ class BotCore:
         self._log("INFO", f"解析出 {len(processed_jobs)} 条完整岗位信息")
         self.jobs = processed_jobs
 
+    def _get_city_id(self, city_name: str) -> str:
+        """通过 boss 城市切换 API 获取城市 ID。"""
+        try:
+            self.dp.get("https://www.zhipin.com/web/geek/job")
+            self._random_delay(1, 2)
+            scale_ele = self.dp.ele(SELECTOR_SCALE, timeout=15)
+            if scale_ele:
+                scale_ele.click()
+                self._random_delay(1, 2)
+            city_hot_eles = self.dp.eles(".city-list-hot .city-item")
+            for ele in city_hot_eles:
+                if city_name in ele.text:
+                    city_code = ele.attr("data-code")
+                    if city_code:
+                        return city_code
+            city_all_eles = self.dp.eles(".city-list-all .city-item")
+            for ele in city_all_eles:
+                if city_name in ele.text:
+                    city_code = ele.attr("data-code")
+                    if city_code:
+                        return city_code
+            return ""
+        except Exception:
+            return ""
+
     # ── 步骤：遍历投递 ──
 
-    def _step_browse_jobs(self) -> None:
-        images = self.config.get("image_files", [])
-        valid_images = [img for img in images if os.path.isfile(img)]
-        if valid_images != images:
-            missing = [i for i in images if not os.path.isfile(i)]
+    def _step_browse_jobs(self):
+        valid_images = [img for img in self._image_files if os.path.isfile(img)]
+        if valid_images != self._image_files:
+            missing = [i for i in self._image_files if not os.path.isfile(i)]
             self._log("WARN", f"以下图片不存在: {missing}")
 
-        min_interval = self.config.get("message_interval_min", 3)
-        max_interval = self.config.get("message_interval_max", 8)
+        self.total_jobs = len(self.jobs)
+        self._report_progress()
 
-        total = len(self.jobs)
-        applied_count = 0
-        skipped_count = 0
-
-        # 发送初始进度
-        self._report_progress(total, 0, 0)
-
-        for idx, job in enumerate(self.jobs, 1):
+        for idx, job in enumerate(self.jobs):
             if not self.running:
-                self._log("INFO", "用户停止，中断投递")
                 break
 
-            if not self._check_rate_limit():
-                break
+            # 频率限制
+            if self._rate_limit_enabled:
+                if self.applied_count >= self._max_per_hour:
+                    self._log("WARN", f"已达到每小时上限 {self._max_per_hour}，暂停 1 小时")
+                    if not self._wait_or_stop(3600):
+                        break
 
-            url = job["url"]
-            if not url:
-                self._log("WARN", f"第 {idx}/{total}: 无链接，跳过")
-                skipped_count += 1
+            self._log("INFO", f"处理 [{idx+1}/{self.total_jobs}] {job.get('job_name', '未知岗位')}")
+
+            self._random_delay(self._min_interval, self._max_interval)
+
+            # 检查是否已经沟通过
+            if self._is_already_chatted(job):
+                self._log("INFO", f"⏭️ 已沟通过: {job.get('job_name', '')}")
+                self.skipped_count += 1
+                self._report_progress()
+                self._save_chat_log(job, skipped=True)
                 continue
 
-            # 去重检查（基于 URL）
-            if url in self._sent_jobs:
-                self._log("INFO", f"  → 已投递过，跳过: {job.get('job_name', '')}")
-                skipped_count += 1
-                continue
-
-            job_name = job.get("job_name", "未知岗位")
-            salary = job.get("salary", "")
-            self._log("INFO", f"[{idx}/{total}] 正在投递: {job_name} {salary}")
-
-            # 带重试的投递
-            success = self._apply_single_job(
-                url, job_name, min_interval, max_interval, valid_images
-            )
+            # 立即沟通
+            success = self._apply_job(job)
 
             if success:
-                applied_count += 1
-                self._sent_jobs.add(url)
-                self._save_sent_jobs()
-                self._report_progress(total, applied_count, skipped_count)
+                self.applied_count += 1
+                self._save_chat_log(job, skipped=False)
+                self._log("SUCCESS", f"✅ 已投递: {job.get('job_name', '')}")
             else:
-                skipped_count += 1
-                self._report_progress(total, applied_count, skipped_count)
+                self.skipped_count += 1
+                self._log("WARN", f"⏭️ 跳过: {job.get('job_name', '')}")
+            self._report_progress()
 
-        self._log("SUCCESS", f"投递完成: 成功 {applied_count}，跳过/失败 {skipped_count}，总计 {total}")
-
-    # ── 单岗位投递 ──
-
-    @retry(max_attempts=MAX_RETRIES, base_delay=RETRY_BASE_DELAY)
-    def _apply_single_job(
-        self,
-        url: str,
-        job_name: str,
-        min_interval: int,
-        max_interval: int,
-        valid_images: list[str],
-    ) -> bool:
-        """投递单个岗位，成功返回 True。
-        
-        严格参照 mian.py 的工作流程：
-          1. dp.get(url) → 检查"继续沟通"→ 提取信息
-          2. dp.get(url) → 点击立即沟通 → 输入招呼语 → 发送
-          3. 关闭弹窗(icon-close)
-          4. 点击继续沟通(btn btn-startchat)
-          5. 上传图片
-        """
-        greeting = self.config.get("greeting_message", "")
-
-        # ── 第 1 次访问：检查是否已沟通 & 提取信息 ──
-        self.dp.get(url)
-        self._random_delay(3, 5)
-
-        # 检查是否之前已经沟通过
-        chat_btn_first = self.dp.ele(SELECTOR_START_CHAT, timeout=5)
-        if chat_btn_first and SELECTOR_START_CHAT_CONTINUE in chat_btn_first.text:
-            self._log("INFO", "  → 之前已沟通过，跳过")
+    @retry(max_attempts=3, base_delay=2.0, backoff_factor=2.0)
+    def _apply_job(self, job: dict) -> bool:
+        """对单个岗位执行「立即沟通」流程。"""
+        if not self.running:
             return False
 
-        # 提取信息（活跃度、规模、岗位描述、薪资）
+        url = job.get("url", "")
+        if not url:
+            return False
+
+        full_url = url if url.startswith("http") else "https://www.zhipin.com" + url
+
+        # 打开岗位详情
+        self.dp.get(full_url)
+        self._random_delay(2, 4)
+
+        # 尝试点击「立即沟通」
         try:
-            boss_time = self.dp.ele(SELECTOR_BOSS_ACTIVE, timeout=5).text
-            scale = self.dp.ele(SELECTOR_SCALE, timeout=3).text
-            self._log("INFO", f"  活跃度: {boss_time}, 规模: {scale}")
-        except Exception:
-            pass
-
-        # ── 第 2 次访问：点击沟通 → 发送消息 ──
-        self.dp.get(url)
-        self._random_delay(2, 3)
-
-        # 点击立即沟通
-        chat_btn = self.dp.ele(SELECTOR_START_CHAT, timeout=5)
-        if not chat_btn:
-            self._log("WARN", "  → 未找到沟通按钮")
+            chat_btn = self.dp.ele("tag:button@@text()=" + SELECTOR_START_CHAT_TEXT, timeout=5)
+            if chat_btn:
+                self._log("INFO", "点击「立即沟通」")
+                chat_btn.click()
+                self._random_delay(2, 3)
+            else:
+                continue_btn = self.dp.ele("tag:button@@text()=" + SELECTOR_START_CHAT_CONTINUE, timeout=3)
+                if continue_btn:
+                    self._log("INFO", "点击「继续沟通」")
+                    continue_btn.click()
+                    self._random_delay(2, 3)
+                else:
+                    self._log("INFO", "未找到沟通按钮，可能已投递或岗位已关闭")
+                    return False
+        except Exception as e:
+            self._log("WARN", f"沟通按钮异常: {e}")
             return False
-        chat_btn.click()
-        self._random_delay(1, 2)
 
-        # 输入打招呼语
-        input_area = self.dp.ele(SELECTOR_INPUT_AREA, timeout=3)
-        if not input_area:
-            self._log("WARN", "  → 未找到输入框")
-            return False
-        input_area.input(greeting)
-
-        # 点击发送
-        send_btn = self.dp.ele(SELECTOR_SEND_BTN, timeout=3)
-        if not send_btn:
-            self._log("WARN", "  → 未找到发送按钮")
-            return False
-        send_btn.click()
-        self._log("SUCCESS", "  → 消息发送成功")
-
-        # 关闭弹窗（严格参照源文件：icon-close）
+        # 发送打招呼消息
         try:
-            close_btn = self.dp.ele(SELECTOR_CLOSE, timeout=3)
-            if close_btn:
-                close_btn.click()
-                self._random_delay(0.5, 1)
-        except Exception:
-            pass
+            msg_input = self.dp.ele(SELECTOR_INPUT_AREA, timeout=5)
+            if not msg_input:
+                self._log("WARN", "未找到输入框")
+                return False
 
-        # 点击继续沟通（严格参照源文件：第二次点击 btn btn-startchat）
-        try:
-            continue_btn = self.dp.ele(SELECTOR_START_CHAT, timeout=3)
-            if continue_btn:
-                continue_btn.click()
-                self._random_delay(1, 2)
-        except Exception:
-            self._log("WARN", "  → 未找到继续沟通按钮")
+            greeting = self._greeting_message or "您好，希望能获得面试机会。"
+            msg_input.clear()
+            self._random_delay(0.5, 1.5)
+            msg_input.input(greeting)
+            self._random_delay(1, 2)
 
-        # 上传图片（严格参照源文件：在继续沟通之后上传）
-        if valid_images:
+            # 如果有图片，上传
             for img_path in valid_images:
                 try:
-                    img_ele = self.dp.ele(SELECTOR_IMG_UPLOAD, timeout=3)
-                    if img_ele:
-                        img_ele.click.to_upload(img_path)
-                        self._log("INFO", f"  → 上传图片: {os.path.basename(img_path)}")
-                    else:
-                        self._log("WARN", f"  → 未找到图片上传按钮")
-                except Exception as e:
-                    self._log("ERROR", f"  → 图片上传失败: {e}")
+                    upload_btn = self.dp.ele("tag:input@@type=file", timeout=3)
+                    if upload_btn:
+                        upload_btn.input(img_path)
+                        self._random_delay(1, 2)
+                except Exception:
+                    pass
 
-        # 随机间隔 + 额外抖动防特征检测
-        base_delay = random.uniform(min_interval, max_interval)
-        jitter = random.gauss(0, base_delay * 0.2)
-        total_delay = max(1.5, base_delay + jitter)
-        self._log("INFO", f"  → 等待 {total_delay:.1f} 秒后继续...")
-        time.sleep(total_delay)
+            # 发送
+            send_btn = self.dp.ele(SELECTOR_SEND_BTN, timeout=3)
+            if send_btn:
+                send_btn.click()
+                self._random_delay(1, 2)
+            else:
+                self.dp.run_js("document.querySelector('.send-message')?.click()")
+                self._random_delay(1, 2)
 
-        return True
+            self._mark_chatted(job)
+            return True
+
+        except Exception as e:
+            self._log("WARN", f"发送消息异常: {e}")
+            return False
+
+    # ── 辅助方法 ──
+
+    def _random_delay(self, min_sec: float, max_sec: float):
+        if not self.running:
+            return
+        time.sleep(random.uniform(min_sec, max_sec))
+
+    def _wait_or_stop(self, seconds: float) -> bool:
+        """等待指定时间，期间若停止则提前返回 False。"""
+        interval = 5
+        for _ in range(int(seconds / interval)):
+            if not self.running:
+                return False
+            time.sleep(interval)
+        return self.running
+
+    # ── Cookie 管理 ──
+
+    def _load_cookies(self) -> bool:
+        try:
+            import shutil
+            import json as _json
+            src = self._cookie_file
+            dst = COOKIES_FILE + ".json"
+            if src != dst and os.path.exists(src):
+                shutil.copy2(src, dst)
+            if os.path.exists(dst):
+                with open(dst, "r", encoding="utf-8") as f:
+                    cookies = _json.load(f)
+                self.dp.set.cookies(cookies)
+                self._log("INFO", f"已加载 Cookie: {dst}")
+                return True
+            return False
+        except Exception:
+            return False
+
+    def _save_cookies(self):
+        try:
+            import json as _json
+            dst = COOKIES_FILE + ".json"
+            cookies = self.dp.cookies()
+            with open(dst, "w", encoding="utf-8") as f:
+                _json.dump(cookies, f, ensure_ascii=False, indent=2)
+            self._log("INFO", f"已保存 Cookie: {dst}")
+        except Exception as e:
+            self._log("WARN", f"Cookie 保存失败: {e}")
+
+    def _clear_cookies(self):
+        if self._clear_cookies_on_failure:
+            try:
+                dst = COOKIES_FILE + ".json"
+                if os.path.exists(dst):
+                    os.remove(dst)
+                self._log("INFO", "已清除失效 Cookie")
+            except Exception:
+                pass
+
+    # ── 去重管理 ──
+
+    def _chatted_db_path(self) -> str:
+        return "chatted_jobs.json"
+
+    def _load_chatted(self) -> set:
+        try:
+            if os.path.exists(self._chatted_db_path()):
+                with open(self._chatted_db_path(), "r") as f:
+                    return set(json.load(f))
+        except Exception:
+            pass
+        return set()
+
+    def _save_chatted(self, urls: set):
+        try:
+            with open(self._chatted_db_path(), "w") as f:
+                json.dump(list(urls), f)
+        except Exception:
+            pass
+
+    def _is_already_chatted(self, job: dict) -> bool:
+        url = job.get("url", "")
+        return url in self._load_chatted()
+
+    def _mark_chatted(self, job: dict):
+        url = job.get("url", "")
+        if url:
+            chatted = self._load_chatted()
+            chatted.add(url)
+            self._save_chatted(chatted)
+
+    # ── 聊天日志 ──
+
+    def _save_chat_log(self, job: dict, skipped: bool = False):
+        try:
+            logs = []
+            if os.path.exists(CHATS_LOG_FILE):
+                with open(CHATS_LOG_FILE, "r", encoding="utf-8") as f:
+                    logs = json.load(f)
+            logs.append({
+                "time": time.strftime("%Y-%m-%d %H:%M:%S"),
+                "job_name": job.get("job_name", ""),
+                "company": job.get("company_location", ""),
+                "salary": job.get("salary", ""),
+                "query": self._query,
+                "city": self._city,
+                "skipped": skipped,
+            })
+            with open(CHATS_LOG_FILE, "w", encoding="utf-8") as f:
+                json.dump(logs[-500:], f, ensure_ascii=False, indent=2)
+        except Exception:
+            pass
