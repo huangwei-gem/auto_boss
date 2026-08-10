@@ -56,7 +56,9 @@ logger = logging.getLogger("boss-web")
 # ═══════════════════════════════════════════════════════════
 
 class BotRunner:
-    """包装一个 BotCore 实例，在独立线程中运行。"""
+    """包装一个 BotCore 实例，在独立线程中运行。
+    同一账号的多个岗位使用同一个浏览器实例。
+    """
 
     def __init__(self, bot_config: dict, sid: str, label: str):
         self.bot_config = bot_config
@@ -101,18 +103,13 @@ class BotRunner:
             socketio.emit("scheduler_status", {
                 "running": True,
                 "current": {
-                    "account": self.label.split(" / ")[0],
-                    "query": self.label.split(" / ")[1] if " / " in self.label else self.label,
+                    "account": self.label.split(" / ")[0] if " / " in self.label else self.label,
+                    "query": self.label.split(" / ")[1] if " / " in self.label else "",
                     "city": ""
                 },
             }, to=self.sid)
-            # 先检查是否有start方法（兼容不同版本）
-            if hasattr(self.bot, "start"):
-                self.bot.start()
-            elif hasattr(self.bot, "run"):
-                self.bot.run()
-            else:
-                self.log("错误: BotCore 没有 start 或 run 方法")
+            # 调用 start 方法（同步，会等待完成）
+            self.bot.start()
             self.done = True
             self.log("已完成")
         except Exception as e:
@@ -120,12 +117,6 @@ class BotRunner:
             import traceback
             self.log(f"详细: {traceback.format_exc()}")
             self.done = True
-
-
-# ═══════════════════════════════════════════════════════════
-#  TaskScheduler — 按账号顺序执行任务
-# ═══════════════════════════════════════════════════════════
-
 class TaskScheduler:
     """按账号顺序执行任务，同一账号的岗位串行执行。"""
 
@@ -155,63 +146,50 @@ class TaskScheduler:
             runner.stop()
 
     def run(self):
-        total = len(self.tasks)
-        self.log(f"[SCHEDULER] 并发启动 {total} 个任务...")
-
-        socketio.emit("scheduler_status", {
-            "running": True, "total": total, "completed": 0, "current": None,
-        }, to=self.sid)
-
-        # 按账号分组，同一账号的任务串行执行
-        account_groups = OrderedDict()
-        for task in self.tasks:
-            acc = task["account_name"]
-            if acc not in account_groups:
-                account_groups[acc] = []
-            account_groups[acc].append(task)
-
-        completed = 0
+        """按账号顺序执行，同一账号的岗位串行执行（复用同一个浏览器）。"""
+        self.log(f"[SYSTEM] 调度器启动，共 {len(self.tasks)} 个任务")
+        # 按账号分组
+        account_groups = {}
+        for t in self.tasks:
+            name = t.get("account_name", "默认")
+            if name not in account_groups:
+                account_groups[name] = []
+            account_groups[name].append(t)
+        self.log(f"[SCHEDULER] 共 {len(account_groups)} 个账号：{list(account_groups.keys())}")
+        total_count = len(self.tasks)
+        completed_count = 0
         for acc_name, acc_tasks in account_groups.items():
             if self._stop.is_set():
+                self.log(f"[SCHEDULER] 已被中断")
                 break
-            for task in acc_tasks:
+            self.log(f"[SCHEDULER] 开始处理账号：{acc_name} ({len(acc_tasks)} 个岗位)")
+            for idx, task in enumerate(acc_tasks):
                 if self._stop.is_set():
                     break
-                label = f"{task['account_name']} / {task['query']}({task['city']})"
+                label = f"{acc_name} / {task.get('query', '未知')}"
+                self.log(f"[{label}] 启动中...")
                 runner = BotRunner(task, self.sid, label)
                 self._runners.append(runner)
-
-                self.log(f"[SCHEDULER] 启动 [{completed+1}/{total}] {label}")
-                # 在独立线程中运行，以便可以响应停止信号
-                t = threading.Thread(target=runner.run, daemon=True)
-                t.start()
-                # 等待任务完成，同时检查停止信号
-                while t.is_alive() and not self._stop.is_set():
-                    t.join(timeout=0.5)
-                if self._stop.is_set():
-                    runner.stop()
-                    self.log(f"[SCHEDULER] 已停止 {label}")
-                completed += 1
-
+                runner.run()
+                # 等待当前任务完成（串行执行）
+                while not runner.done and not self._stop.is_set():
+                    import time
+                    time.sleep(0.5)
+                self.log(f"[SCHEDULER] ✓ 已完成 [{idx+1}/{len(acc_tasks)}] {label}")
+                completed_count += 1
                 socketio.emit("scheduler_status", {
-                    "running": not self._stop.is_set(),
-                    "total": total,
-                    "completed": completed,
-                    "current": None if self._stop.is_set() else {"account": task["account_name"], "query": task["query"], "city": task["city"]},
+                    "running": True,
+                    "total": total_count,
+                    "completed": completed_count,
+                    "current": {"account": acc_name, "query": task.get("query", ""), "city": task.get("city", "")}
                 }, to=self.sid)
-
-        self.log(f"[SCHEDULER] 全部完成！{completed}/{total} 个任务")
+        self.log(f"[SCHEDULER] 全部完成！{completed_count}/{total_count} 个任务")
         socketio.emit("scheduler_status", {
-            "running": False, "total": total, "completed": completed, "current": None,
-        }, to=self.sid)
-
-
-# ═══════════════════════════════════════════════════════════
-#  Routes — 页面
-# ═══════════════════════════════════════════════════════════
-
-@app.route("/")
-def index():
+            "running": False,
+            "total": total_count,
+            "completed": completed_count,
+            "current": None
+        }, to=self.sid)def index():
     return render_template("index.html")
 
 

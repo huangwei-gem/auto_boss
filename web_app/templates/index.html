@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Boss直聘 · AI自动投递</title>
-<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><defs><linearGradient id=%22g%22 x1=%220%%22 y1=%220%%22 x2=%22100%%22 y2=%22100%%22><stop offset=%220%%22 stop-color=%22%234a7cff%22/><stop offset=%22100%%22 stop-color=%22%231e4bd2%22/></linearGradient></defs><rect width=%22100%22 height=%22100%22 rx=%2220%22 fill=%22url(%23g)%22/><text x=%2250%22 y=%2265%22 font-size=%2250%22 font-family=%22Arial%22 font-weight=%22bold%22 text-anchor=%22middle%22 fill=%22%23fff%22>BZ</text></svg>">
+<title>Boss直聘 · AI自动投递助手</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><defs><linearGradient id=%22g%22 x1=%220%%22 y1=%220%%22 x2=%22100%%22 y2=%22100%%22><stop offset=%220%%22 stop-color=%22%234a7cff%22/><stop offset=%22100%%22 stop-color=%22%231e4bd2%22/></linearGradient></defs><rect width=%22100%22 height=%22100%22 rx=%2220%22 fill=%22url(%23g)%22/><text x=%2250%22 y=%2268%22 font-size=%2236%22 font-family=%22Arial%22 font-weight=%22bold%22 text-anchor=%22middle%22 fill=%22%23fff%22>🤖</text></svg>">
 <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -43,7 +43,7 @@
   --sh-md:0 4px 16px rgba(0,0,0,.07);
   --sh-lg:0 8px 32px rgba(0,0,0,.09);
   --ease:cubic-bezier(.4,0,.2,1);--dur:.2s;--side-w:320px;--header-h:54px;
-  --side-bg:linear-gradient(180deg,#f8f9fb,#eef0f4);
+  --side-bg:#f4f5f7;
   --side-text:#0f1117;
   --side-input-bg:rgba(0,0,0,.04);
   --side-input-bd:rgba(0,0,0,.08);
@@ -91,7 +91,7 @@ a{color:var(--accent);text-decoration:none}
 .app{display:flex;width:100%;height:100%}
 .side{flex:0 0 var(--side-w);display:flex;flex-direction:column;background:var(--side-bg);color:var(--side-text);position:relative;z-index:10}
 .side-head{display:flex;align-items:center;gap:10px;padding:14px 18px;border-bottom:1px solid var(--side-input-bd);flex-shrink:0}
-.side-head .logo-wrap{width:28px;height:28px;border-radius:6px;background:linear-gradient(135deg,#4a7cff,#1e4bd2);display:flex;align-items:center;justify-content:center;color:#fff;font-size:14px;font-weight:800;flex-shrink:0;box-shadow:0 2px 8px rgba(30,75,210,.4)}
+.side-head .logo-wrap{width:32px;height:32px;border-radius:8px;background:linear-gradient(135deg,#4a7cff,#1e4bd2);display:flex;align-items:center;justify-content:center;color:#fff;font-size:18px;flex-shrink:0;box-shadow:0 2px 8px rgba(30,75,210,.4);transition:transform .2s ease}.side-head .logo-wrap:hover{transform:scale(1.1)}
 .side-head .logo-text{font-size:14px;font-weight:600;flex:1;letter-spacing:-.02em}
 .side-head .conn-badge{font-size:10px;padding:2px 8px;border-radius:10px;font-weight:500;background:var(--success-bg);color:var(--success)}
 .side-head .conn-badge.disconnected{background:var(--danger-bg);color:var(--danger)}
@@ -376,7 +376,7 @@ a{color:var(--accent);text-decoration:none}
             <button class="btn btn-success btn-sm" id="btnStartAll" onclick="startAll()">▶ 启动</button>
             <button class="btn btn-danger btn-sm" id="btnStopAll" onclick="stopAll()" style="display:none">■ 停止</button>
             <button class="btn btn-ghost btn-sm" id="btnConfirmLogin" onclick="confirmLogin()" style="display:none">✓ 确认登录</button>
-            <button class="btn btn-ghost btn-sm" onclick="saveConfig()">💾 保存配置</button>
+            <button class="btn btn-ghost btn-sm" onclick="saveConfig()">💾 保存配置（自动保存，无需手动点击）</button>
           </div>
         </div>
       </div>
@@ -442,16 +442,40 @@ function clearLog() {
 function loadConfig() {
   fetch('/api/config').then(r=>r.json()).then(cfg => {
     config = cfg.config || cfg;
+    // 填充所有默认值
+    if (!config.browser) config.browser = {};
+    if (!config.login) config.login = {};
+    if (!config.rate_limit) config.rate_limit = {};
+    if (!config.retry) config.retry = {};
+    config.browser = Object.assign({headless:false,viewport_width:1280,viewport_height:800,page_load_timeout:30,custom_user_agent:'',proxy:''}, config.browser);
+    config.login = Object.assign({wait_timeout:300,clear_cookies_on_failure:true}, config.login);
+    config.rate_limit = Object.assign({enabled:true,max_per_hour:30,max_per_day:100}, config.rate_limit);
+    config.retry = Object.assign({max_attempts:3,base_delay:2,backoff_factor:2}, config.retry);
     if (!config.accounts || !config.accounts.length) {
-      config.accounts = [{name:'主账号',enabled:true,cookie_file:'zhipin_cookies.json',image_files:[],message_interval_min:3,message_interval_max:8,jobs:[{enabled:true,city:'上海',query:'AI产品经理',scroll_pages:5,greeting_message:'您好，我是双一流的本科，应聘数据分析岗位。在校系统学习数据分析相关知识，掌握Excel、基础SQL与数据整理技能，具备数据思维。做事严谨细心，学习能力强，愿意踏实积累。十分认可贵公司，希望能获得面试机会。'}]}];
+      config.accounts = [{name:'主账号',enabled:true,cookie_file:'zhipin_cookies.json',image_files:[],message_interval_min:3,message_interval_max:8,jobs:[{enabled:true,city:'上海',query:'AI产品经理',scroll_pages:5,greeting_message:defaultGreeting}]}];
     }
+    // 填充每个账号和岗位的默认值
+    config.accounts.forEach(function(acc) {
+      acc.enabled = acc.enabled !== false;
+      acc.cookie_file = acc.cookie_file || 'zhipin_cookies.json';
+      acc.image_files = acc.image_files || [];
+      acc.message_interval_min = acc.message_interval_min ?? 3;
+      acc.message_interval_max = acc.message_interval_max ?? 8;
+      (acc.jobs || []).forEach(function(job) {
+        job.enabled = job.enabled !== false;
+        job.city = job.city || '上海';
+        job.query = job.query || '';
+        job.scroll_pages = job.scroll_pages || 5;
+        job.greeting_message = job.greeting_message || defaultGreeting;
+      });
+    });
     renderAccounts();
     renderAccountConfig();
     renderAdvSettings();
     renderJobs();
     updateSbarJobs();
     refreshImageList();
-  }).catch(()=>{});
+  }).catch(function(e){console.error('loadConfig:',e);});
 }
 
 function saveConfig() {
@@ -773,7 +797,7 @@ let editingJobIdx = -1;
 
 function addJob() {
   editingJobIdx = -1;
-  showJobModal({enabled:true,city:'',query:'',scroll_pages:5,greeting_message:defaultGreeting});
+  showJobModal({enabled:true,city:'上海',query:'数据分析',scroll_pages:5,greeting_message:defaultGreeting});
 }
 
 function editJob(i) {
@@ -793,7 +817,7 @@ function showJobModal(job) {
       '<div class="modal-field"><label>城市</label><input id="modalCity" value="'+escAttr(job.city||'')+'" placeholder="例如: 上海"></div>'+
       '<div class="modal-field"><label>搜索关键词</label><input id="modalQuery" value="'+escAttr(job.query||'')+'" placeholder="例如: AI产品经理"></div>'+
       '<div class="modal-field"><label>翻页数</label><input id="modalPages" type="number" value="'+(job.scroll_pages||5)+'" min="1" max="20"></div>'+
-      '<div class="modal-field"><label>打招呼消息</label><textarea id="modalGreeting" placeholder="输入自定义打招呼消息（默认使用上方模板）" style="min-height:80px">'+escHtml(job.greeting_message||'')+'</textarea></div>'+
+      '<div class="modal-field"><label>打招呼消息</label><textarea id="modalGreeting" placeholder="输入自定义打招呼消息" style="min-height:80px">'+escHtml(job.greeting_message||defaultGreeting)+'</textarea></div>'+
       '<div class="modal-actions">'+
         '<button class="btn btn-primary" onclick="saveJobModal()">'+(editingJobIdx>=0?'保存':'添加')+'</button>'+
         '<button class="btn btn-cancel" onclick="closeJobModal()">取消</button>'+
@@ -913,7 +937,7 @@ function updateStats() {
 }
 
 function escHtml(t){const d=document.createElement('div');d.textContent=t;return d.innerHTML;}
-function escAttr(t){return encodeURIComponent(t||'');}
+function escAttr(t){return encodeURIComponent(t||'').replace(/%2F/g,'/');}
 
 function addLog(level,message){
   const area=document.getElementById('logArea');

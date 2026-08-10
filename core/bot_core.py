@@ -357,10 +357,22 @@ class BotCore:
     # ── 步骤：遍历投递 ──
 
     def _step_browse_jobs(self):
-        valid_images = [img for img in self._image_files if os.path.isfile(img)]
-        if valid_images != self._image_files:
-            missing = [i for i in self._image_files if not os.path.isfile(i)]
-            self._log("WARN", f"以下图片不存在: {missing}")
+        # 处理图片路径：如果以 dashboard/ 开头，转换为绝对路径
+        resolved_images = []
+        for img in self._image_files:
+            if img.startswith("dashboard/"):
+                full_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "web_app", img)
+                if os.path.isfile(full_path):
+                    resolved_images.append(full_path)
+                else:
+                    self._log("WARN", f"图片不存在: {full_path}")
+            elif os.path.isfile(img):
+                resolved_images.append(img)
+            else:
+                self._log("WARN", f"图片不存在: {img}")
+        self._image_files = resolved_images
+        if not self._image_files:
+            self._log("INFO", "没有作品图片")
 
         self.total_jobs = len(self.jobs)
         self._report_progress()
