@@ -106,7 +106,13 @@ class BotRunner:
                     "city": ""
                 },
             }, to=self.sid)
-            self.bot.start()
+            # 先检查是否有start方法（兼容不同版本）
+            if hasattr(self.bot, "start"):
+                self.bot.start()
+            elif hasattr(self.bot, "run"):
+                self.bot.run()
+            else:
+                self.log("错误: BotCore 没有 start 或 run 方法")
             self.done = True
             self.log("已完成")
         except Exception as e:
@@ -176,14 +182,16 @@ class TaskScheduler:
                 self._runners.append(runner)
 
                 self.log(f"[SCHEDULER] 启动 [{completed+1}/{total}] {label}")
-                runner.run()
+                # 在独立线程中运行，以便可以响应停止信号
+                t = threading.Thread(target=runner.run, daemon=True)
+                t.start()
+                # 等待任务完成，同时检查停止信号
+                while t.is_alive() and not self._stop.is_set():
+                    t.join(timeout=0.5)
+                if self._stop.is_set():
+                    runner.stop()
+                    self.log(f"[SCHEDULER] 已停止 {label}")
                 completed += 1
-
-                # 等待任务完成后再启动下一个（同一账号串行）
-                runner.done = False
-                # 简单轮询等待
-                while not runner.done and not self._stop.is_set():
-                    time.sleep(0.5)
 
                 socketio.emit("scheduler_status", {
                     "running": not self._stop.is_set(),
@@ -217,7 +225,7 @@ def api_get_config():
     return jsonify({"status": "ok", "config": _config})
 
 
-@app.route("/api/config", methods=["PUT"])
+@app.route("/api/config", methods=["POST", "PUT"])
 def api_put_config():
     global _config
     try:
@@ -360,7 +368,7 @@ def api_upload_cookie():
 def api_delete_image():
     """删除作品图片文件。"""
     data = request.get_json()
-    path = (data.get("path") or data.get("filename") or "") if data else ""
+    path = (data.get("path") or data.get("filename") or data.get("name") or "") if data else ""
     if not path:
         return jsonify({"status": "error", "message": "缺少文件路径"}), 400
     import urllib.parse
@@ -368,22 +376,33 @@ def api_delete_image():
     path = urllib.parse.unquote(path)
     # 移除可能的前导 dashboard/ 或 /
     path = path.lstrip("/")
-    # 尝试 BASE_DIR + path
-    full_path = os.path.join(BASE_DIR, path)
-    if os.path.exists(full_path) and os.path.isfile(full_path):
-        os.remove(full_path)
-        return jsonify({"status": "ok"})
-    # 尝试 dashboard 目录下
-    basename = os.path.basename(path)
+    
+    # 尝试多种路径匹配
     dashboard_dir = os.path.join(BASE_DIR, "dashboard")
+    basename = os.path.basename(path)
+    
+    # 尝试1: 完整路径
+    if path.startswith("dashboard/"):
+        full_path = os.path.join(BASE_DIR, path)
+        if os.path.exists(full_path) and os.path.isfile(full_path):
+            os.remove(full_path)
+            return jsonify({"status": "ok"})
+    
+    # 尝试2: dashboard + basename 用模糊匹配（处理中文文件名问题）
     if os.path.exists(dashboard_dir):
         for fn in os.listdir(dashboard_dir):
-            # 精确匹配 basename
-            if fn == basename:
+            if basename in fn or fn in basename:
                 filepath = os.path.join(dashboard_dir, fn)
                 if os.path.isfile(filepath):
                     os.remove(filepath)
                     return jsonify({"status": "ok"})
+    
+    # 尝试3: 直接删除 basename
+    full_path = os.path.join(dashboard_dir, basename)
+    if os.path.exists(full_path) and os.path.isfile(full_path):
+        os.remove(full_path)
+        return jsonify({"status": "ok"})
+    
     return jsonify({"status": "error", "message": "文件不存在"}), 404
 
 
@@ -435,6 +454,9 @@ def on_start_all(data=None):
             _bot = None
             _scheduler_stop.clear()
             logger.info("检测到调度器线程已结束，重置状态")
+            # 重新加载配置
+            global _config
+            _config = load_config()
 
     # 展开任务
     tasks = flatten_jobs_for_run(_config)

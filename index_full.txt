@@ -581,18 +581,16 @@ function renderImageGrid() {
   if (!a) return;
   const selected = a.image_files || [];
   if (!availableImages.length) {
-    grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:16px;color:var(--fg-3rd);font-size:11px">\u6682\u65e0\u56fe\u7247\uff0c\u70b9\u51fb\u4e0a\u4f20</div>';
+    grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:16px;color:var(--fg-3rd);font-size:11px">暂无图片，点击上传</div>';
     return;
   }
-  grid.innerHTML = availableImages.map(function(f) {
-    var checked = selected.includes(f);
-    var enc = escAttr(f);
-    var name = f.replace('dashboard/', '');
-    return '<div class="image-grid-item' + (checked ? ' checked' : '') + '" onclick="toggleImageSelect(\'' + enc + '\')">' +
-      '<div class="img-del-btn" onclick="event.stopPropagation();deleteImageFile(\'' + enc + '\')" title="\u5220\u9664\u6b64\u56fe\u7247">\u2716</div>' +
-      '<img src="/' + f + '" alt="' + enc + '" loading="lazy" onerror="this.style.display=\'none\'">' +
-      '<div class="check-overlay">\u2713</div>' +
-      '<div class="img-name">' + escHtml(name) + '</div>' +
+  grid.innerHTML = availableImages.map(f => {
+    const checked = selected.includes(f);
+    return '<div class="image-grid-item'+(checked?' checked':'')+'" onclick="toggleImageSelect(\'"+escAttr(f)+'\')">'+\
+      '<div class=\"img-del-btn\" onclick=\"event.stopPropagation();deleteImageFile(\'"+escAttr(f)+'\')\" title=\"删除此图片\">✖</div>'+\
+      '<img src="/'+f+'" alt="'+escAttr(f)+'" loading="lazy" onerror="this.style.display=\'none\'">'+
+      '<div class="check-overlay">✓</div>'+
+      '<div class="img-name">'+escHtml(f.replace('dashboard/',''))+'</div>'+
     '</div>';
   }).join('');
   updateImageCountBadge();
@@ -949,3 +947,4 @@ loadConfig();
 </script>
 </body>
 </html>
+
