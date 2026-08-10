@@ -1,10 +1,10 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="zh-CN" data-theme="light">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Boss直聘 · AI 自动投递</title>
-<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><rect width=%22100%22 height=%22100%22 rx=%2220%22 fill=%22%231e4bd2%22/><path d=%22M28 30h44v8H36v12h28v8H36v12h36v8H28z%22 fill=%22%23fff%22/></svg>">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><rect width=%22100%22 height=%22100%22 rx=%2220%22 fill=%22%231e4bd2%22/><text y=%22.68em%22 font-size=%2270%22 font-family=%22Arial%22 font-weight=%22bold%22 x=%2250%22 text-anchor=%22middle%22 fill=%22%23fff%22>B</text></svg>">
 <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -161,9 +161,6 @@ a{color:var(--accent);text-decoration:none}
 .image-grid-item:hover .check-overlay{opacity:1}
 .image-grid-item .img-name{position:absolute;bottom:0;left:0;right:0;padding:3px 6px;font-size:8px;background:linear-gradient(transparent,rgba(0,0,0,.7));color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .image-grid-item .img-del-btn{position:absolute;top:2px;left:2px;width:18px;height:18px;border-radius:50%;background:rgba(220,38,38,.8);color:#fff;display:flex;align-items:center;justify-content:center;font-size:10px;cursor:pointer;opacity:0;transition:opacity .15s ease;z-index:2;line-height:1}
-.image-grid-item:hover .img-del-btn{opacity:1}
-.image-grid-item .img-del-btn:hover{background:#dc2626;transform:scale(1.15)}
-.image-grid-item .img-del-btn{position:absolute;top:2px;left:2px;width:18px;height:18px;border-radius:50%;background:rgba(220,38,38,.8);color:#fff;display:flex;align-items:center;justify-content:center;font-size:10px;cursor:pointer;opacity:0;transition:opacity .15s ease;z-index:2}
 .image-grid-item:hover .img-del-btn{opacity:1}
 .image-grid-item .img-del-btn:hover{background:#dc2626;transform:scale(1.15)}
 
@@ -389,6 +386,7 @@ a{color:var(--accent);text-decoration:none}
 const socket = io();
 let config = { accounts: [] };
 let activeAccountIdx = 0;
+const defaultGreeting = "您好，我是双一流的本科，应聘数据分析岗位。在校系统学习数据分析相关知识，掌握Excel、基础SQL与数据整理技能，具备数据思维。做事严谨细心，学习能力强，愿意踏实积累。十分认可贵公司，希望能获得面试机会。";
 let stats = { total: 0, applied: 0, skipped: 0 };
 let availableImages = [];
 
@@ -418,19 +416,21 @@ function loadTheme() {
 }
 
 function updateThemeUI(theme) {
-  document.getElementById('themeIcon').innerHTML = theme === 'dark' ? '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>' : '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>';
-  document.getElementById('themeLabel').textContent = theme === 'dark' ? '暗色' : '亮色';
+  const isDark = theme === 'dark';
+  document.getElementById('themeIcon').innerHTML = isDark
+    ? '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>'
+    : '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>';
+  document.getElementById('themeLabel').textContent = isDark ? '亮色' : '暗色';
 }
 
 function clearLog() {
   document.getElementById('logArea').innerHTML = '<div class="log-empty"><div class="empty-icon">📝</div><div>等待操作...</div></div>';
 }
 
-const defaultGreeting = '您好，我是双一流的本科，应聘数据分析岗位。在校系统学习数据分析相关知识，掌握Excel、基础SQL与数据整理技能，具备数据思维。做事严谨细心，学习能力强，愿意踏实积累。十分认可贵公司，希望能获得面试机会。';
 
 function loadConfig() {
   fetch('/api/config').then(r=>r.json()).then(cfg => {
-    config = cfg;
+    config = cfg.config || cfg;
     if (!config.accounts || !config.accounts.length) {
       config.accounts = [{name:'主账号',enabled:true,cookie_file:'zhipin_cookies.json',image_files:[],message_interval_min:3,message_interval_max:8,jobs:[{enabled:true,city:'上海',query:'AI产品经理',scroll_pages:5,greeting_message:'您好，我是双一流的本科，应聘数据分析岗位。在校系统学习数据分析相关知识，掌握Excel、基础SQL与数据整理技能，具备数据思维。做事严谨细心，学习能力强，愿意踏实积累。十分认可贵公司，希望能获得面试机会。'}]}];
     }
@@ -444,7 +444,7 @@ function loadConfig() {
 }
 
 function saveConfig() {
-  return fetch('/api/config',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(config)}).then(r=>r.json()).then(()=>{addLog('SYSTEM','配置已保存')});
+  return fetch('/api/config',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({config:config})}).then(r=>r.json()).then(()=>{addLog('SYSTEM','配置已保存')});
 }
 
 function renderAccounts() {
@@ -652,8 +652,6 @@ function removeImage(name) {
   }).catch(e => addLog('ERROR', '删除图片异常: ' + e.message));
 }
 
-
-
 function deleteImageFile(name) { name = decodeURIComponent(name);
   if (!confirm('确定删除图片文件吗？这将从服务器上彻底删除此图片。')) return;
   fetch('/api/images/delete', {
@@ -778,7 +776,7 @@ function showJobModal(job) {
       '<div class="modal-field"><label>城市</label><input id="modalCity" value="'+escAttr(job.city||'')+'" placeholder="例如: 上海"></div>'+
       '<div class="modal-field"><label>搜索关键词</label><input id="modalQuery" value="'+escAttr(job.query||'')+'" placeholder="例如: AI产品经理"></div>'+
       '<div class="modal-field"><label>翻页数</label><input id="modalPages" type="number" value="'+(job.scroll_pages||5)+'" min="1" max="20"></div>'+
-      '<div class="modal-field"><label>打招呼消息</label><textarea id="modalGreeting" placeholder="输入自定义打招呼消息...">'+escHtml(job.greeting_message||'')+'</textarea></div>'+
+      '<div class="modal-field"><label>打招呼消息</label><textarea id="modalGreeting" placeholder="输入自定义打招呼消息（默认使用上方模板）" style="min-height:80px">'+escHtml(job.greeting_message||'')+'</textarea></div>'+
       '<div class="modal-actions">'+
         '<button class="btn btn-primary" onclick="saveJobModal()">'+(editingJobIdx>=0?'保存':'添加')+'</button>'+
         '<button class="btn btn-cancel" onclick="closeJobModal()">取消</button>'+
@@ -861,9 +859,20 @@ function deleteAccount(i) {
 }
 
 function startAll() {
-  fetch('/api/scheduler/reset', { method:'POST' }).then(() => {
-    saveConfig().then(()=>{ socket.emit('start_all'); addLog('SYSTEM','正在启动所有任务...'); });
-  });
+  const btn = document.getElementById('btnStartAll');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ 启动中...'; }
+  // 先保存配置
+  saveConfig()
+    .then(() => fetch('/api/scheduler/reset', { method:'POST' }))
+    .then(r => r.json())
+    .then(() => {
+      socket.emit('start_all');
+      addLog('SYSTEM','正在启动所有任务...');
+    })
+    .catch(e => {
+      addLog('ERROR', '启动失败: ' + e.message);
+      if (btn) { btn.disabled = false; btn.textContent = '▶ 启动'; }
+    });
 }
 
 function stopAll() { socket.emit('stop_all'); addLog('SYSTEM','正在停止所有任务...'); }
@@ -874,7 +883,7 @@ function checkLogin() { socket.emit('check_login'); }
 
 function setControls(running) {
   const s=document.getElementById('btnStartAll'),p=document.getElementById('btnStopAll'),cl=document.getElementById('btnConfirmLogin'),dot=document.getElementById('sbarDot'),st=document.getElementById('sbarStatus');
-  if(s) s.style.display=running?'none':'';
+  if(s) { s.style.display=running?'none':''; s.disabled=false; s.textContent='▶ 启动'; }
   if(p) p.style.display=running?'':'none';
   if(cl) cl.style.display=running?'':'none';
   if(dot) dot.className='status-dot'+(running?' running':' idle');
@@ -938,7 +947,3 @@ loadConfig();
 </script>
 </body>
 </html>
-
-
-
-

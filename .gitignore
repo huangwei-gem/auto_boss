@@ -86,3 +86,8 @@ fix_html.py
 fix_*.py
 _write_html.py
 write_html.py
+
+# Dashboard test images
+web_app/dashboard/看板*.png
+web_app/dashboard/fa5e32a0_test_image.png
+web_app/dashboard/12253a2a_*.png

@@ -224,10 +224,12 @@ def api_put_config():
         data = request.get_json()
         if not data:
             return jsonify({"status": "error", "message": "请求体为空"}), 400
-        if not isinstance(data.get("config"), dict):
+        
+        # 兼容两种格式：{config: ...} 或直接 config 对象
+        new_cfg = data.get("config") if isinstance(data.get("config"), dict) else data
+        if not isinstance(new_cfg, dict):
             return jsonify({"status": "error", "message": "config 字段必须是对象"}), 400
 
-        new_cfg = data["config"]
         errors = validate_config(new_cfg)
         if errors:
             return jsonify({"status": "error", "message": "；".join(errors)}), 400
@@ -361,18 +363,27 @@ def api_delete_image():
     path = (data.get("path") or data.get("filename") or "") if data else ""
     if not path:
         return jsonify({"status": "error", "message": "缺少文件路径"}), 400
+    import urllib.parse
+    # 先 URL 解码，再规范化路径
+    path = urllib.parse.unquote(path)
+    # 移除可能的前导 dashboard/ 或 /
+    path = path.lstrip("/")
+    # 尝试 BASE_DIR + path
     full_path = os.path.join(BASE_DIR, path)
     if os.path.exists(full_path) and os.path.isfile(full_path):
         os.remove(full_path)
         return jsonify({"status": "ok"})
-    # Try matching by basename
+    # 尝试 dashboard 目录下
     basename = os.path.basename(path)
     dashboard_dir = os.path.join(BASE_DIR, "dashboard")
     if os.path.exists(dashboard_dir):
         for fn in os.listdir(dashboard_dir):
+            # 精确匹配 basename
             if fn == basename:
-                os.remove(os.path.join(dashboard_dir, fn))
-                return jsonify({"status": "ok"})
+                filepath = os.path.join(dashboard_dir, fn)
+                if os.path.isfile(filepath):
+                    os.remove(filepath)
+                    return jsonify({"status": "ok"})
     return jsonify({"status": "error", "message": "文件不存在"}), 404
 
 
@@ -412,14 +423,17 @@ def on_start_all(data=None):
     global _scheduler_thread, _scheduler_stop, _bot, _scheduler_running
 
     # 如果标记为运行中但线程已死，先重置
-    if _scheduler_running:
-        if _scheduler_thread and _scheduler_thread.is_alive():
+    thread_alive = _scheduler_thread and _scheduler_thread.is_alive()
+    if _scheduler_running or thread_alive:
+        if thread_alive:
             emit("bot_log", {"message": "[SYSTEM] 调度器已在运行中"})
             return
         else:
+            # 标记为运行中但线程已死，重置状态
             _scheduler_running = False
             _scheduler_thread = None
             _bot = None
+            _scheduler_stop.clear()
             logger.info("检测到调度器线程已结束，重置状态")
 
     # 展开任务
@@ -513,6 +527,13 @@ def serve_dashboard(filename):
     if os.path.exists(full_path) and os.path.isfile(full_path):
         return send_file(full_path)
     return abort(404)
+
+
+@app.route("/api/default/greeting", methods=["GET"])
+def api_default_greeting():
+    """返回默认打招呼消息。"""
+    from config import DEFAULT_GREETING
+    return jsonify({"status": "ok", "greeting": DEFAULT_GREETING})
 
 
 @app.route("/api/images/list", methods=["GET"])
