@@ -1,4 +1,4 @@
-"""配置管理 — 多岗位多账号版（完整参数版）
+"""配置管理 — 多岗位多账号版
 
 完整配置结构（所有字段均可通过 Web UI 调整）：
 {
@@ -24,16 +24,12 @@
     "base_delay": 2.0,
     "backoff_factor": 2.0
   },
-  "screenshot": {
-    "enabled": true,
-    "interval": 3.0
-  },
   "accounts": [
     {
       "name": "主账号",
       "enabled": true,
       "cookie_file": "zhipin_cookies.json",
-      "image_files": ["..."],
+      "image_files": [],
       "message_interval_min": 3,
       "message_interval_max": 8,
       "jobs": [
@@ -42,7 +38,7 @@
           "city": "上海",
           "query": "数据分析",
           "scroll_pages": 5,
-          "greeting_message": "您好..."
+          "greeting_message": "您好，我是双一流的本科，应聘数据分析岗位。在校系统学习数据分析相关知识，掌握Excel、基础SQL与数据整理技能，具备数据思维。做事严谨细心，学习能力强，愿意踏实积累。十分认可贵公司，希望能获得面试机会。"
         }
       ]
     }
@@ -55,6 +51,12 @@ import copy
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 CONFIG_FILE = os.path.join(BASE_DIR, "bot_config.json")
+
+DEFAULT_GREETING = (
+    "您好，我是双一流的本科，应聘数据分析岗位。在校系统学习数据分析相关知识，"
+    "掌握Excel、基础SQL与数据整理技能，具备数据思维。做事严谨细心，学习能力强，"
+    "愿意踏实积累。十分认可贵公司，希望能获得面试机会。"
+)
 
 DEFAULT_CONFIG = {
     "browser": {
@@ -79,43 +81,21 @@ DEFAULT_CONFIG = {
         "base_delay": 2.0,
         "backoff_factor": 2.0,
     },
-    "screenshot": {
-        "enabled": True,
-        "interval": 3.0,
-    },
     "accounts": [
         {
             "name": "主账号",
             "enabled": True,
             "cookie_file": "zhipin_cookies.json",
-            "image_files": [
-                "dashboard/看板1.png",
-                "dashboard/看板2.png",
-                "dashboard/看板3.png",
-            ],
+            "image_files": [],
             "message_interval_min": 3,
             "message_interval_max": 8,
             "jobs": [
                 {
                     "enabled": True,
                     "city": "上海",
-                    "query": "AI产品经理",
+                    "query": "数据分析",
                     "scroll_pages": 5,
-                    "greeting_message": (
-                        "您好，我是双一流的本科，应聘数据分析岗位。在校系统学习数据分析相关知识，掌握Excel、基础SQL与数据整理技能，具备数据思维。做事严谨细心，学习能力强，愿意踏实积累。十分认可贵公司，希望能获得面试机会。"
-                    ),
-                },
-                {
-                    "enabled": True,
-                    "city": "北京",
-                    "query": "大模型应用开发",
-                    "scroll_pages": 5,
-                    "greeting_message": (
-                        "您好，我熟悉大模型API调用与Prompt工程，"
-                        "有基于LangChain/LLM的应用开发经验，"
-                        "能独立完成AI产品从原型到上线的全流程。"
-                        "希望能获得面试机会，贡献我的AI技术能力。"
-                    ),
+                    "greeting_message": DEFAULT_GREETING,
                 },
             ],
         }
@@ -136,24 +116,19 @@ def _fill_defaults(target: dict, default: dict) -> dict:
 def _migrate_old_config(old: dict) -> dict:
     """将旧版单岗位配置迁移到新版完整配置格式。"""
     new = copy.deepcopy(DEFAULT_CONFIG)
-    # 清空 accounts 然后用旧数据填充
     new["accounts"] = []
     job = {
         "enabled": True,
-        "city": old.get("city", "长沙"),
+        "city": old.get("city", "上海"),
         "query": old.get("job_query", "数据分析"),
         "scroll_pages": old.get("scroll_pages", 5),
-        "greeting_message": old.get("greeting_message", ""),
+        "greeting_message": old.get("greeting_message", DEFAULT_GREETING),
     }
     account = {
         "name": "主账号",
         "enabled": True,
         "cookie_file": "zhipin_cookies.json",
-        "image_files": old.get("image_files", [
-            "dashboard/看板1.png",
-            "dashboard/看板2.png",
-            "dashboard/看板3.png",
-        ]),
+        "image_files": old.get("image_files", []),
         "message_interval_min": old.get("message_interval_min", 3),
         "message_interval_max": old.get("message_interval_max", 8),
         "jobs": [job],
@@ -177,11 +152,23 @@ def load_config() -> dict:
     if isinstance(saved, dict) and "job_query" in saved:
         saved = _migrate_old_config(saved)
 
-    # 新版但缺少顶层字段 → 合并默认值
+    # 新版但缺少顶层字段 -> 合并默认值
     merged = copy.deepcopy(DEFAULT_CONFIG)
     if isinstance(saved, dict):
         _fill_defaults(saved, merged)
         merged = saved
+
+    # 确保每个 job 都有 greeting_message 默认值
+    for acc in merged.get("accounts", []):
+        acc.setdefault("image_files", [])
+        acc.setdefault("message_interval_min", 3)
+        acc.setdefault("message_interval_max", 8)
+        for job in acc.get("jobs", []):
+            job.setdefault("greeting_message", DEFAULT_GREETING)
+            job.setdefault("scroll_pages", 5)
+            job.setdefault("city", "上海")
+            job.setdefault("enabled", True)
+
     return merged
 
 
@@ -198,13 +185,11 @@ def validate_config(cfg: dict) -> list:
         errors.append("配置必须是一个对象")
         return errors
 
-    # browser
     browser = cfg.get("browser", {})
     if isinstance(browser, dict):
         if not isinstance(browser.get("page_load_timeout", 30), (int, float)):
             errors.append("browser.page_load_timeout 必须是数字")
 
-    # rate_limit
     rl = cfg.get("rate_limit", {})
     if isinstance(rl, dict):
         for k in ("max_per_hour", "max_per_day"):
@@ -212,7 +197,6 @@ def validate_config(cfg: dict) -> list:
             if not isinstance(v, (int, float)) or v < 0:
                 errors.append(f"rate_limit.{k} 必须是非负数")
 
-    # accounts
     accounts = cfg.get("accounts", [])
     if not isinstance(accounts, list) or not accounts:
         errors.append("至少需要一个账号配置")
@@ -243,19 +227,17 @@ def flatten_jobs_for_run(cfg: dict) -> list[dict]:
                 continue
             tasks.append({
                 "account_name": acc.get("name", ""),
-                "city": job.get("city", "长沙"),
+                "city": job.get("city", "上海"),
                 "query": job.get("query", ""),
                 "scroll_pages": job.get("scroll_pages", 5),
-                "greeting_message": job.get("greeting_message", ""),
+                "greeting_message": job.get("greeting_message", DEFAULT_GREETING),
                 "cookie_file": acc.get("cookie_file", "zhipin_cookies.json"),
                 "image_files": acc.get("image_files", []),
                 "message_interval_min": acc.get("message_interval_min", 3),
                 "message_interval_max": acc.get("message_interval_max", 8),
-                # 引用全局参数
                 "browser": cfg.get("browser", {}),
                 "login": cfg.get("login", {}),
                 "rate_limit": cfg.get("rate_limit", {}),
                 "retry": cfg.get("retry", {}),
-                "screenshot": cfg.get("screenshot", {}),
             })
     return tasks
