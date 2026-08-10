@@ -41,6 +41,9 @@ if os.path.exists(src_dir) and not os.path.exists(dst_dir):
 from config import load_config, save_config, validate_config, flatten_jobs_for_run
 sys.path.insert(0, os.path.join(PROJECT_DIR, "core"))
 from bot_core import BotCore
+# 添加 run() 别名以兼容旧代码
+if not hasattr(BotCore, 'run'):
+    BotCore.run = BotCore.start
 
 # ── Flask 应用 ──
 app = Flask(__name__)

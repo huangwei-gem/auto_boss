@@ -1,10 +1,10 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="zh-CN" data-theme="light">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Boss直聘 · AI 自动投递</title>
-<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>💼</text></svg>">
+<title>Boss直聘 · 自动投递</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><rect width=%22100%22 height=%22100%22 rx=%2220%22 fill=%22%231e4bd2%22/><text y=%22.67em%22 font-size=%2270%22 x=%2250%22 text-anchor=%22middle%22 fill=%22%23fff%22>B</text></svg>">
 <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -426,6 +426,8 @@ function clearLog() {
   document.getElementById('logArea').innerHTML = '<div class="log-empty"><div class="empty-icon">📝</div><div>等待操作...</div></div>';
 }
 
+const defaultGreeting = '您好，我是双一流的本科，应聘数据分析岗位。在校系统学习数据分析相关知识，掌握Excel、基础SQL与数据整理技能，具备数据思维。做事严谨细心，学习能力强，愿意踏实积累。十分认可贵公司，希望能获得面试机会。';
+
 function loadConfig() {
   fetch('/api/config').then(r=>r.json()).then(cfg => {
     config = cfg;
@@ -654,7 +656,11 @@ function removeImage(name) {
   name = decodeURIComponent(name);
   const a = config.accounts[activeAccountIdx];
   if (!a) return;
-  a.image_files = (a.image_files||[]).filter(f=>f!==name);
+  a.image_files = (a.image_files||[]).filter(f => {
+    const fName = f.replace('dashboard/', '');
+    const delName = name.replace('dashboard/', '');
+    return fName !== delName;
+  });
   renderImageGrid();
   renderImageChips();
   fetch('/api/images/delete', {
@@ -682,10 +688,15 @@ function deleteImageFile(name) { name = decodeURIComponent(name);
   }).then(r=>r.json()).then(data => {
     if (data.status === 'ok') {
       addLog('INFO', '已删除图片文件: ' + name);
-      for (let acc of config.accounts) {
-        if (acc.image_files) {
-          acc.image_files = acc.image_files.filter(f => f !== name);
-        }
+      // 只从当前账号的image_files中移除
+      const a = config.accounts[activeAccountIdx];
+      if (a && a.image_files) {
+        a.image_files = a.image_files.filter(f => {
+          // 匹配文件名（考虑路径前缀）
+          const fName = f.replace('dashboard/', '');
+          const delName = name.replace('dashboard/', '');
+          return fName !== delName;
+        });
       }
       refreshImageList();
     } else {
@@ -772,7 +783,7 @@ let editingJobIdx = -1;
 
 function addJob() {
   editingJobIdx = -1;
-  showJobModal({enabled:true,city:'',query:'',scroll_pages:5,greeting_message:''});
+  showJobModal({enabled:true,city:'',query:'',scroll_pages:5,greeting_message:defaultGreeting});
 }
 
 function editJob(i) {
@@ -810,7 +821,7 @@ function saveJobModal() {
   const city = document.getElementById('modalCity').value.trim();
   const query = document.getElementById('modalQuery').value.trim();
   const pages = parseInt(document.getElementById('modalPages').value) || 5;
-  const greeting = document.getElementById('modalGreeting').value.trim();
+  const greeting = document.getElementById('modalGreeting').value.trim() || defaultGreeting;
   if (!city || !query) { addLog('ERROR','城市和关键词不能为空'); return; }
   const a = config.accounts[activeAccountIdx];
   if (!a) return;
@@ -875,7 +886,9 @@ function deleteAccount(i) {
 }
 
 function startAll() {
-  saveConfig().then(()=>{ socket.emit('start_all'); addLog('SYSTEM','正在启动所有任务...'); });
+  fetch('/api/scheduler/reset', { method:'POST' }).then(() => {
+    saveConfig().then(()=>{ socket.emit('start_all'); addLog('SYSTEM','正在启动所有任务...'); });
+  });
 }
 
 function stopAll() { socket.emit('stop_all'); addLog('SYSTEM','正在停止所有任务...'); }
@@ -950,6 +963,7 @@ loadConfig();
 </script>
 </body>
 </html>
+
 
 
 

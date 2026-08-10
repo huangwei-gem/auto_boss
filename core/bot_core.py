@@ -99,7 +99,6 @@ class BotCore:
         self._is_logged_in = False
         self._login_event = threading.Event()
         self._stop_screenshot = threading.Event()
-        self._screenshot_thread: Optional[threading.Thread] = None
 
         # 统计
         self.applied_count = 0
@@ -171,6 +170,9 @@ class BotCore:
 
     # ── 启动 / 停止 ──
 
+    def run(self):
+        self.start()
+
     def start(self):
         self.running = True
         try:
@@ -179,7 +181,6 @@ class BotCore:
             self._log("ERROR", f"Bot 异常退出: {e}")
         finally:
             self.running = False
-            self._stop_screenshot.set()
             if self.dp:
                 try:
                     self.dp.quit()
