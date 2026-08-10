@@ -75,3 +75,7 @@ fix_*.py
 edit_html.py
 start.cmd
 
+
+# Test screenshot
+web_app/test_screenshot.png
+
