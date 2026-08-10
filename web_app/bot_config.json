@@ -33,25 +33,25 @@
     }
   ],
   "browser": {
-    "custom_user_agent": "",
     "headless": false,
-    "page_load_timeout": 30,
-    "proxy": "",
+    "viewport_width": 1280,
     "viewport_height": 800,
-    "viewport_width": 1280
+    "page_load_timeout": 30,
+    "custom_user_agent": "",
+    "proxy": ""
   },
   "login": {
-    "clear_cookies_on_failure": true,
-    "wait_timeout": 300
+    "wait_timeout": 300,
+    "clear_cookies_on_failure": true
   },
   "rate_limit": {
     "enabled": true,
-    "max_per_day": 100,
-    "max_per_hour": 30
+    "max_per_hour": 30,
+    "max_per_day": 100
   },
   "retry": {
-    "backoff_factor": 2,
+    "max_attempts": 3,
     "base_delay": 2,
-    "max_attempts": 3
+    "backoff_factor": 2
   }
 }

@@ -189,7 +189,10 @@ class TaskScheduler:
             "total": total_count,
             "completed": completed_count,
             "current": None
-        }, to=self.sid)def index():
+        }, to=self.sid)
+
+@app.route("/")
+def index():
     return render_template("index.html")
 
 
@@ -417,24 +420,31 @@ def api_scheduler_reset():
 @socketio.on("start_all")
 def on_start_all(data=None):
     """启动所有启用的账号×岗位任务。"""
-    global _scheduler_thread, _scheduler_stop, _bot, _scheduler_running
+    global _scheduler_thread, _scheduler_stop, _bot, _scheduler_running, _config
 
-    # 如果标记为运行中但线程已死，先重置
+    # 强制重置调度器状态，避免卡在"调度器已在运行中"
     thread_alive = _scheduler_thread and _scheduler_thread.is_alive()
-    if _scheduler_running or thread_alive:
-        if thread_alive:
-            emit("bot_log", {"message": "[SYSTEM] 调度器已在运行中"})
-            return
-        else:
-            # 标记为运行中但线程已死，重置状态
-            _scheduler_running = False
-            _scheduler_thread = None
+    if thread_alive:
+        _scheduler_stop.set()
+        if _bot:
+            try:
+                _bot.stop()
+            except Exception:
+                pass
             _bot = None
-            _scheduler_stop.clear()
-            logger.info("检测到调度器线程已结束，重置状态")
-            # 重新加载配置
-            global _config
-            _config = load_config()
+        _scheduler_thread.join(timeout=5)
+        _scheduler_thread = None
+        _scheduler_running = False
+        _scheduler_stop.clear()
+        logger.info("已停止旧调度器线程，重新启动")
+    else:
+        _scheduler_running = False
+        _scheduler_thread = None
+        _bot = None
+        _scheduler_stop.clear()
+
+    # 重新加载配置（确保最新）
+    _config = load_config()
 
     # 展开任务
     tasks = flatten_jobs_for_run(_config)
@@ -473,8 +483,6 @@ def on_start_all(data=None):
 
     _scheduler_thread = threading.Thread(target=_run_scheduler, daemon=True)
     _scheduler_thread.start()
-
-
 @socketio.on("stop_all")
 def on_stop_all():
     """停止所有任务。"""

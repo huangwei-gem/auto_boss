@@ -669,28 +669,8 @@ function updateImageCountBadge() {
 }
 
 function removeImage(name) {
-  name = decodeURIComponent(name);
-  const a = config.accounts[activeAccountIdx];
-  if (!a) return;
-  a.image_files = (a.image_files||[]).filter(f => {
-    const fName = f.replace('dashboard/', '');
-    const delName = name.replace('dashboard/', '');
-    return fName !== delName;
-  });
-  renderImageGrid();
-  renderImageChips();
-  fetch('/api/images/delete', {
-    method:'POST',
-    headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({filename:name})
-  }).then(r=>r.json()).then(data => {
-    if (data.status === 'ok') {
-      addLog('INFO', '已删除图片: ' + name);
-      refreshImageList();
-    } else {
-      addLog('ERROR', '删除图片失败: ' + (data.message||''));
-    }
-  }).catch(e => addLog('ERROR', '删除图片异常: ' + e.message));
+  // 委托给 deleteImageFile 统一处理
+  deleteImageFile(name);
 }
 
 function deleteImageFile(name) { name = decodeURIComponent(name);
@@ -702,16 +682,26 @@ function deleteImageFile(name) { name = decodeURIComponent(name);
   }).then(r=>r.json()).then(data => {
     if (data.status === 'ok') {
       addLog('INFO', '已删除图片文件: ' + name);
-      // 只从当前账号的image_files中移除
+      // 从当前账号的image_files中移除
       const a = config.accounts[activeAccountIdx];
       if (a && a.image_files) {
         a.image_files = a.image_files.filter(f => {
-          // 匹配文件名（考虑路径前缀）
           const fName = f.replace('dashboard/', '');
           const delName = name.replace('dashboard/', '');
           return fName !== delName;
         });
       }
+      // 从所有账号的image_files中移除
+      for (const acc of config.accounts) {
+        if (acc && acc.image_files) {
+          acc.image_files = acc.image_files.filter(f => {
+            const fName = f.replace('dashboard/', '');
+            const delName = name.replace('dashboard/', '');
+            return fName !== delName;
+          });
+        }
+      }
+      saveConfig(); // 持久化保存
       refreshImageList();
     } else {
       addLog('ERROR', '删除失败: ' + (data.message||''));
@@ -734,6 +724,7 @@ function handleImageUpload(event) {
           if (!a.image_files) a.image_files = [];
           for (let f of data.files) { if (!a.image_files.includes(f)) { a.image_files.push(f); } }
         }
+        saveConfig(); // 持久化保存配置
         refreshImageList();
       } else { addLog('ERROR', '上传失败: ' + (data.message||'')); }
     })
@@ -907,8 +898,11 @@ function startAll() {
     .then(() => fetch('/api/scheduler/reset', { method:'POST' }))
     .then(r => r.json())
     .then(() => {
-      socket.emit('start_all');
-      addLog('SYSTEM','正在启动所有任务...');
+      // 稍微延迟确保状态已完全重置
+      setTimeout(() => {
+        socket.emit('start_all');
+        addLog('SYSTEM','正在启动所有任务...');
+      }, 100);
     })
     .catch(e => {
       addLog('ERROR', '启动失败: ' + e.message);
@@ -916,7 +910,14 @@ function startAll() {
     });
 }
 
-function stopAll() { socket.emit('stop_all'); addLog('SYSTEM','正在停止所有任务...'); }
+function stopAll() {
+  socket.emit('stop_all');
+  addLog('SYSTEM','正在停止所有任务...');
+  const btn = document.getElementById('btnStartAll');
+  if (btn) { btn.disabled = false; btn.textContent = '▶ 启动'; btn.style.display = ''; }
+  const stopBtn = document.getElementById('btnStopAll');
+  if (stopBtn) { stopBtn.style.display = 'none'; }
+}
 
 function confirmLogin() { socket.emit('confirm_login'); }
 
@@ -925,8 +926,8 @@ function checkLogin() { socket.emit('check_login'); }
 function setControls(running) {
   const s=document.getElementById('btnStartAll'),p=document.getElementById('btnStopAll'),cl=document.getElementById('btnConfirmLogin'),dot=document.getElementById('sbarDot'),st=document.getElementById('sbarStatus');
   if(s) { s.style.display=running?'none':''; s.disabled=false; s.textContent='▶ 启动'; }
-  if(p) p.style.display=running?'':'none';
-  if(cl) cl.style.display=running?'':'none';
+  if(p) { p.style.display=running?'':'none'; }
+  if(cl) { cl.style.display=running?'':'none'; }
   if(dot) dot.className='status-dot'+(running?' running':' idle');
   if(st) st.textContent=running?'运行中':'就绪';
 }
@@ -957,7 +958,6 @@ function resetScheduler() {
     .then(r=>r.json())
     .then(data => {
       if (data.status === 'ok') {
-        addLog('SYSTEM', '调度器状态已重置');
         setControls(false);
       }
     })
@@ -979,6 +979,12 @@ socket.on('scheduler_status',(data)=>{
   const lbl=document.getElementById('currentTaskLabel');
   if(data.current&&lbl) lbl.textContent=data.current.account+' / '+data.current.query+'('+data.current.city+')';
   else if(!data.running&&lbl) lbl.textContent='';
+  if(!data.running){
+    const btn=document.getElementById('btnStartAll');
+    if(btn){btn.disabled=false;btn.textContent='▶ 启动';btn.style.display='';}
+    const stopBtn=document.getElementById('btnStopAll');
+    if(stopBtn)stopBtn.style.display='none';
+  }
 });
 socket.on('bot_login',()=>{document.getElementById('btnConfirmLogin').disabled=false;});
 socket.on('login_result',(data)=>{if(data.success)addLog('SUCCESS','登录状态正常');else addLog('ERROR','未登录');});
