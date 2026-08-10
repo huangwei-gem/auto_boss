@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Boss直聘 · 自动投递</title>
-<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><rect width=%22100%22 height=%22100%22 rx=%2220%22 fill=%22%231e4bd2%22/><text y=%22.67em%22 font-size=%2270%22 x=%2250%22 text-anchor=%22middle%22 fill=%22%23fff%22>B</text></svg>">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><rect width=%22100%22 height=%22100%22 rx=%2220%22 fill=%22%231e4bd2%22/><text y=%22.67em%22 font-size=%2260%22 x=%2250%22 text-anchor=%22middle%22 fill=%22%23fff%22 font-family=%22system-ui,sans-serif%22 font-weight=%22700%22>BZ</text></svg>">
 <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -490,11 +490,6 @@ function renderAdvSettings() {
   document.getElementById('advRetryDelay').placeholder = '2';
   document.getElementById('advRetryBackoff').value = rt.backoff_factor || '';
   document.getElementById('advRetryBackoff').placeholder = '2';
-
-  const sc = config.screenshot || {};
-  document.getElementById('advScreenshot').className = 'toggle-switch' + (sc.enabled ? ' on' : '');
-  document.getElementById('advScreenshotInterval').value = sc.interval || '';
-  document.getElementById('advScreenshotInterval').placeholder = '3';
 }
 
 function toggleAdvSection() {
@@ -517,10 +512,6 @@ function toggleAdvBool(key) {
     if (!config.login) config.login = {};
     config.login.clear_cookies_on_failure = !config.login.clear_cookies_on_failure;
     document.getElementById('advClearCookies').className = 'toggle-switch' + (config.login.clear_cookies_on_failure !== false ? ' on' : '');
-  } else if (key === "screenshot_enabled") {
-    if (!config.screenshot) config.screenshot = {};
-    config.screenshot.enabled = !config.screenshot.enabled;
-    document.getElementById('advScreenshot').className = 'toggle-switch' + (config.screenshot.enabled ? ' on' : '');
   }
 }
 
@@ -547,9 +538,6 @@ function onAdvChange() {
   config.retry.base_delay = parseFloat(document.getElementById('advRetryDelay').value) || 2.0;
   config.retry.backoff_factor = parseFloat(document.getElementById('advRetryBackoff').value) || 2.0;
 
-  if (!config.screenshot) config.screenshot = {};
-  config.screenshot.enabled = document.getElementById('advScreenshot').classList.contains('on');
-  config.screenshot.interval = parseFloat(document.getElementById('advScreenshotInterval').value) || 3.0;
 }
 
 
@@ -562,9 +550,7 @@ function renderAccountConfig() {
   document.getElementById('accCookie').value = a.cookie_file||'';
   document.getElementById('accCookie').placeholder = 'zhipin_cookies.json';
   document.getElementById('msgIntervalMin').value = (a.message_interval_min !== undefined && a.message_interval_min !== null) ? a.message_interval_min : 3;
-  document.getElementById('msgIntervalMin').placeholder = '3';
   document.getElementById('msgIntervalMax').value = (a.message_interval_max !== undefined && a.message_interval_max !== null) ? a.message_interval_max : 8;
-  document.getElementById('msgIntervalMax').placeholder = '8';
   renderImageChips();
   renderImageGrid();
 }

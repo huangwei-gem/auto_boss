@@ -46,6 +46,7 @@ from bot_core import BotCore
 # ── Flask 应用 ──
 app = Flask(__name__)
 app.config["SECRET_KEY"] = os.urandom(24).hex()
+app.config["TEMPLATES_AUTO_RELOAD"] = True
 app.config["MAX_CONTENT_LENGTH"] = 50 * 1024 * 1024  # 50MB max upload
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode="threading")
 
@@ -342,7 +343,7 @@ def api_upload_cookie():
 def api_delete_image():
     """删除作品图片文件。"""
     data = request.get_json()
-    path = data.get("path", "") if data else ""
+    path = data.get("path") or data.get("filename") or "" if data else ""
     if not path:
         return jsonify({"status": "error", "message": "缺少路径"}), 400
     full_path = os.path.join(BASE_DIR, path)
@@ -494,6 +495,38 @@ def serve_dashboard(filename):
 # ═══════════════════════════════════════════════════════════
 #  入口
 # ═══════════════════════════════════════════════════════════
+
+
+
+@app.route("/api/images/list", methods=["GET"])
+def api_images_list():
+    """列出所有作品图片。"""
+    dashboard_dir = os.path.join(BASE_DIR, "dashboard")
+    if not os.path.exists(dashboard_dir):
+        os.makedirs(dashboard_dir, exist_ok=True)
+    images = []
+    for fn in sorted(os.listdir(dashboard_dir), reverse=True):
+        fp = os.path.join(dashboard_dir, fn)
+        if os.path.isfile(fp) and fn.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp')):
+            images.append(f"dashboard/{fn}")
+    return jsonify({"status": "ok", "images": images})
+
+
+@app.route("/api/images/delete", methods=["POST"])
+def api_images_delete():
+    """删除作品图片文件（前端兼容端点）。"""
+    data = request.get_json()
+    filename = (data.get("filename") or data.get("path") or "") if data else ""
+    if not filename:
+        return jsonify({"status": "error", "message": "缺少文件名"}), 400
+    full_path = os.path.join(BASE_DIR, filename)
+    if os.path.exists(full_path) and os.path.isfile(full_path):
+        os.remove(full_path)
+        return jsonify({"status": "ok"})
+    return jsonify({"status": "error", "message": "文件不存在"}), 404
+
+
+
 
 if __name__ == "__main__":
     print("  Boss 直聘 · 自动投递  Web 版（多岗位多账号）")
