@@ -545,6 +545,8 @@ function toggleAdvBool(key) {
     config.login.clear_cookies_on_failure = !config.login.clear_cookies_on_failure;
     setEl('advClearCookies', 'toggle-switch' + (config.login.clear_cookies_on_failure !== false ? ' on' : ''));
   }
+  saveConfig();
+}
 }
 
 function onAdvChange() {
@@ -832,6 +834,7 @@ function onAccChange() {
   a.cookie_file = document.getElementById('accCookie').value;
   a.message_interval_min = parseFloat(document.getElementById('msgIntervalMin').value) || 3;
   a.message_interval_max = parseFloat(document.getElementById('msgIntervalMax').value) || 8;
+  saveConfig();
 }
 
 function toggleAccEnabled() {
@@ -839,6 +842,7 @@ function toggleAccEnabled() {
   if (!a) return;
   a.enabled = a.enabled === false;
   renderAccountConfig();
+  saveConfig();
 }
 
 function toggleJob(i) {
@@ -847,6 +851,7 @@ function toggleJob(i) {
   a.jobs[i].enabled = a.jobs[i].enabled === false;
   renderJobs();
   updateSbarJobs();
+  saveConfig();
 }
 
 let editingJobIdx = -1;
@@ -907,6 +912,7 @@ function saveJobModal() {
   closeJobModal();
   renderJobs();
   updateSbarJobs();
+  saveConfig();
 }
 
 function deleteJob(i) {
@@ -916,6 +922,7 @@ function deleteJob(i) {
   a.jobs.splice(i, 1);
   renderJobs();
   updateSbarJobs();
+  saveConfig();
   addLog('INFO', '岗位已删除');
 }
 

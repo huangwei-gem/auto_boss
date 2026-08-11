@@ -1,48 +1,28 @@
-"""配置管理 — 多岗位多账号版
+"""配置管理 — 多岗位多账号版 + AI 智能解析
 
 完整配置结构（所有字段均可通过 Web UI 调整）：
 {
-  "browser": {
-    "headless": false,
-    "viewport_width": 1280,
-    "viewport_height": 800,
-    "page_load_timeout": 30,
-    "custom_user_agent": "",
-    "proxy": ""
+  "browser": { ... },
+  "login": { ... },
+  "rate_limit": { ... },
+  "retry": { ... },
+  "ai": {
+    "enabled": false,
+    "api_key": "",
+    "api_base": "https://apihub.agnes-ai.com/v1",
+    "model": "agnes-2.5-flash",
+    "match_threshold": 70
   },
-  "login": {
-    "wait_timeout": 300,
-    "clear_cookies_on_failure": true
+  "resume": {
+    "school": "",
+    "major": "",
+    "degree": "",
+    "skills": [],
+    "experience": "",
+    "target_position": "",
+    "self_intro": ""
   },
-  "rate_limit": {
-    "enabled": true,
-    "max_per_hour": 30,
-    "max_per_day": 100
-  },
-  "retry": {
-    "max_attempts": 3,
-    "base_delay": 2.0,
-    "backoff_factor": 2.0
-  },
-  "accounts": [
-    {
-      "name": "主账号",
-      "enabled": true,
-      "cookie_file": "zhipin_cookies.json",
-      "image_files": [],
-      "message_interval_min": 3,
-      "message_interval_max": 8,
-      "jobs": [
-        {
-          "enabled": true,
-          "city": "上海",
-          "query": "数据分析",
-          "scroll_pages": 5,
-          "greeting_message": "您好，我是双一流的本科，应聘数据分析岗位。在校系统学习数据分析相关知识，掌握Excel、基础SQL与数据整理技能，具备数据思维。做事严谨细心，学习能力强，愿意踏实积累。十分认可贵公司，希望能获得面试机会。"
-        }
-      ]
-    }
-  ]
+  "accounts": [ ... ]
 }
 """
 import json
@@ -80,6 +60,22 @@ DEFAULT_CONFIG = {
         "max_attempts": 3,
         "base_delay": 2.0,
         "backoff_factor": 2.0,
+    },
+    "ai": {
+        "enabled": False,
+        "api_key": "",
+        "api_base": "https://apihub.agnes-ai.com/v1",
+        "model": "agnes-2.5-flash",
+        "match_threshold": 70,
+    },
+    "resume": {
+        "school": "",
+        "major": "",
+        "degree": "",
+        "skills": [],
+        "experience": "",
+        "target_position": "",
+        "self_intro": "",
     },
     "accounts": [
         {
@@ -138,7 +134,7 @@ def _migrate_old_config(old: dict) -> dict:
 
 
 def load_config() -> dict:
-    """加载配置，自动填充缺失字段。"""
+    """加载配置，自动填充缺失字段（包括 AI 和简历字段）。"""
     if not os.path.exists(CONFIG_FILE):
         return copy.deepcopy(DEFAULT_CONFIG)
 
@@ -168,6 +164,10 @@ def load_config() -> dict:
             job.setdefault("scroll_pages", 5)
             job.setdefault("city", "上海")
             job.setdefault("enabled", True)
+
+    # 确保 AI 和 resume 字段存在
+    merged.setdefault("ai", copy.deepcopy(DEFAULT_CONFIG["ai"]))
+    merged.setdefault("resume", copy.deepcopy(DEFAULT_CONFIG["resume"]))
 
     return merged
 
@@ -239,5 +239,7 @@ def flatten_jobs_for_run(cfg: dict) -> list[dict]:
                 "login": cfg.get("login", {}),
                 "rate_limit": cfg.get("rate_limit", {}),
                 "retry": cfg.get("retry", {}),
+                "ai": cfg.get("ai", {}),
+                "resume": cfg.get("resume", {}),
             })
     return tasks

@@ -665,11 +665,179 @@ def on_check_login():
         emit("bot_login_status", {"logged_in": False})
 
 
+
+# ── AI 分析器实例 ──
+
+_ai_analyzer = None
+
+def _get_ai_analyzer():
+    """获取或初始化 AI 分析器。"""
+    global _ai_analyzer
+    cfg = load_config()
+    ai_cfg = cfg.get("ai", {})
+    resume_cfg = cfg.get("resume", {})
+    if _ai_analyzer is None:
+        from core.ai_analyzer import AIAnalyzer
+        _ai_analyzer = AIAnalyzer(
+            api_key=ai_cfg.get("api_key", ""),
+            api_base=ai_cfg.get("api_base", "https://apihub.agnes-ai.com/v1"),
+            model=ai_cfg.get("model", "agnes-2.5-flash"),
+            match_threshold=ai_cfg.get("match_threshold", 70),
+            log_callback=lambda msg: logger.info(msg),
+        )
+    # 更新简历
+    _ai_analyzer.set_resume(resume_cfg)
+    return _ai_analyzer
+
+
+# ── Resume API ──
+
+@app.route("/api/resume", methods=["GET"])
+def api_get_resume():
+    """获取简历信息。"""
+    cfg = load_config()
+    return jsonify({"status": "ok", "resume": cfg.get("resume", {})})
+
+
+@app.route("/api/resume", methods=["PUT", "POST"])
+def api_save_resume():
+    """保存简历信息。"""
+    global _config
+    try:
+        data = request.get_json() or {}
+        cfg = load_config()
+        cfg["resume"] = {
+            "school": data.get("school", ""),
+            "major": data.get("major", ""),
+            "degree": data.get("degree", ""),
+            "skills": data.get("skills", []),
+            "experience": data.get("experience", ""),
+            "target_position": data.get("target_position", ""),
+            "self_intro": data.get("self_intro", ""),
+        }
+        save_config(cfg)
+        _config = cfg
+        # 重置 AI 分析器，下次使用新简历
+        global _ai_analyzer
+        _ai_analyzer = None
+        return jsonify({"status": "ok"})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+# ── AI Config API ──
+
+@app.route("/api/ai/config", methods=["GET"])
+def api_get_ai_config():
+    """获取 AI 配置。"""
+    cfg = load_config()
+    return jsonify({"status": "ok", "ai": cfg.get("ai", {})})
+
+
+@app.route("/api/ai/config", methods=["PUT", "POST"])
+def api_save_ai_config():
+    """保存 AI 配置。"""
+    global _config, _ai_analyzer
+    try:
+        data = request.get_json() or {}
+        cfg = load_config()
+        cfg["ai"] = {
+            "enabled": data.get("enabled", False),
+            "api_key": data.get("api_key", ""),
+            "api_base": data.get("api_base", "https://apihub.agnes-ai.com/v1"),
+            "model": data.get("model", "agnes-2.5-flash"),
+            "match_threshold": int(data.get("match_threshold", 70)),
+        }
+        save_config(cfg)
+        _config = cfg
+        # 重置 AI 分析器
+        _ai_analyzer = None
+        return jsonify({"status": "ok"})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+# ── AI Analysis API ──
+
+@app.route("/api/ai/analyze", methods=["POST"])
+def api_ai_analyze():
+    """分析单个岗位。"""
+    try:
+        data = request.get_json() or {}
+        job = data.get("job", {})
+        if not job:
+            return jsonify({"status": "error", "message": "job 不能为空"}), 400
+        analyzer = _get_ai_analyzer()
+        if not analyzer.api_key:
+            return jsonify({"status": "error", "message": "AI API Key 未配置"}), 400
+        result = analyzer.analyze_job(job)
+        return jsonify({"status": "ok", "result": result})
+    except Exception as e:
+        logger.exception("AI 分析失败")
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route("/api/ai/analyze-batch", methods=["POST"])
+def api_ai_analyze_batch():
+    """批量分析岗位。"""
+    try:
+        data = request.get_json() or {}
+        jobs = data.get("jobs", [])
+        if not jobs:
+            return jsonify({"status": "error", "message": "jobs 不能为空"}), 400
+        analyzer = _get_ai_analyzer()
+        if not analyzer.api_key:
+            return jsonify({"status": "error", "message": "AI API Key 未配置"}), 400
+        results = analyzer.analyze_batch(jobs)
+        return jsonify({"status": "ok", "results": results})
+    except Exception as e:
+        logger.exception("AI 批量分析失败")
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route("/api/ai/cache", methods=["GET"])
+def api_ai_cache():
+    """查看 AI 分析缓存状态。"""
+    try:
+        import os
+        cache_file = os.path.join(BASE_DIR, "ai_cache.json")
+        if os.path.exists(cache_file):
+            with open(cache_file, "r", encoding="utf-8") as f:
+                cache = json.load(f)
+            return jsonify({"status": "ok", "cache": cache, "count": len(cache)})
+        return jsonify({"status": "ok", "cache": {}, "count": 0})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route("/api/ai/cache/clear", methods=["POST"])
+def api_ai_cache_clear():
+    """清空 AI 分析缓存。"""
+    try:
+        analyzer = _get_ai_analyzer()
+        analyzer.clear_cache()
+        return jsonify({"status": "ok"})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route("/api/ai/stats", methods=["GET"])
+def api_ai_stats():
+    """获取 AI 分析统计。"""
+    try:
+        analyzer = _get_ai_analyzer()
+        stats = analyzer.get_stats()
+        return jsonify({"status": "ok", "stats": stats})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
 if __name__ == "__main__":
     print("  Boss 直聘 · 自动投递  Web 版（多岗位多账号）")
     print("  启动地址: http://127.0.0.1:5000")
     print("  " + "=" * 40)
     socketio.run(app, host="127.0.0.1", port=5000, debug=False, allow_unsafe_werkzeug=True)
+
 
 
 
