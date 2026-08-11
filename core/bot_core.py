@@ -568,49 +568,45 @@ class BotCore:
             return CITY_CODES[city_name]
         self._log("WARN", f"未找到城市 {city_name} 的编码")
         return ""
-        def _resolve_images(self) -> list:
-        """解析作品图片路径，从配置的 image_files 列表加载。"""
-        resolved = []
+
+
+    def _resolve_images(self) -> list:
+        """解析作品图片路径。支持配置路径和自动扫描 dashboard 目录。"""
+        import glob
         _script_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         web_app_dir = os.path.join(_script_dir, "web_app")
         web_dashboard = os.path.join(web_app_dir, "dashboard")
 
-        self._log("INFO", f"开始解析图片，配置中的 image_files: {self._image_files}")
+        self._log("INFO", f"配置中的 image_files: {self._image_files}")
 
-        if not self._image_files:
-            self._log("INFO", "image_files 为空，尝试从 dashboard 目录加载所有图片")
-            if os.path.exists(web_dashboard):
-                all_images = []
-                for fn in sorted(os.listdir(web_dashboard)):
-                    if fn.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp')):
-                        full_path = os.path.join(web_dashboard, fn)
-                        if os.path.isfile(full_path):
-                            all_images.append(full_path)
-                            self._log("INFO", f"dashboard 图片: {fn}")
-                if all_images:
-                    self._log("INFO", f"从 dashboard 加载了 {len(all_images)} 张图片")
-                    return all_images
-                else:
-                    self._log("WARN", "dashboard 目录为空，没有作品图片")
-            else:
-                self._log("WARN", f"dashboard 目录不存在: {web_dashboard}")
-            return []
+        # 确保 dashboard 目录存在
+        os.makedirs(web_dashboard, exist_ok=True)
 
-        # 从配置的 image_files 解析
-        for img in self._image_files:
-            if isinstance(img, str):
-                if img.startswith("dashboard/") or img.startswith("dashboard\\"):
-                    full_path = os.path.join(web_app_dir, img.replace("\\", "/"))
-                elif os.path.isabs(img):
-                    full_path = img
-                else:
-                    full_path = os.path.join(web_dashboard, img)
-                self._log("INFO", f"检查图片路径: {full_path}")
-                if os.path.isfile(full_path):
-                    resolved.append(full_path)
-                    self._log("INFO", f"图片存在: {os.path.basename(full_path)}")
-                else:
-                    self._log("WARN", f"配置图片不存在: {full_path}")
+        resolved = []
+
+        # 策略1: 使用配置的 image_files
+        if self._image_files:
+            for img in self._image_files:
+                if isinstance(img, str):
+                    if img.startswith("dashboard/") or img.startswith("dashboard\\"):
+                        full_path = os.path.join(web_app_dir, img.replace("\\", "/"))
+                    elif os.path.isabs(img):
+                        full_path = img
+                    else:
+                        full_path = os.path.join(web_dashboard, img)
+                    if os.path.isfile(full_path):
+                        resolved.append(full_path)
+                        self._log("INFO", f"配置图片: {os.path.basename(full_path)}")
+                    else:
+                        self._log("WARN", f"配置图片不存在: {os.path.basename(full_path)}")
+
+        # 策略2: 扫描 dashboard 目录（兜底）
+        if not resolved:
+            self._log("INFO", "配置图片未找到，扫描 dashboard 目录...")
+            for ext in ["*.png", "*.jpg", "*.jpeg", "*.gif", "*.webp"]:
+                for f in glob.glob(os.path.join(web_dashboard, ext)):
+                    resolved.append(f)
+                    self._log("INFO", f"扫描到图片: {os.path.basename(f)}")
 
         # 去重
         final_resolved = list(dict.fromkeys(resolved))
@@ -618,11 +614,12 @@ class BotCore:
         if final_resolved:
             self._log("INFO", f"共准备 {len(final_resolved)} 张作品图片")
             for img in final_resolved:
-                self._log("INFO", f"  图片: {os.path.basename(img)}")
+                self._log("INFO", f"  pic {os.path.basename(img)}")
         else:
-            self._log("WARN", "没有作品图片 - 请先在 Web 界面上传图片到 dashboard 目录")
+            self._log("WARN", "没有作品图片")
 
         return final_resolved
+
 
     def _step_browse_jobs(self):
         """遍历岗位列表并投递。"""
@@ -926,7 +923,12 @@ class BotCore:
                     except Exception:
                         pass
 
+                # 上传图片 - 去重后依次上传
+                seen = set()
                 for img_path in self._image_files:
+                    if img_path in seen:
+                        continue
+                    seen.add(img_path)
                     if os.path.isfile(img_path):
                         try:
                             uploaded = self._upload_image(img_path)
@@ -936,6 +938,7 @@ class BotCore:
                                 self._log("WARN", "上传图片失败: " + os.path.basename(img_path))
                         except Exception as e:
                             self._log("WARN", "上传图片异常: " + str(e))
+                    self._random_delay(1, 2)
 
             # ── 清理状态 ──
             try:
