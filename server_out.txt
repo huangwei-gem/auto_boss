@@ -1,0 +1,5 @@
+  Boss 直聘 · 自动投递  Web 版（多岗位多账号）
+  启动地址: http://127.0.0.1:5000
+  ========================================
+ * Serving Flask app 'server'
+ * Debug mode: off

@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Boss直聘 · AI自动投递助手</title>
-<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><defs><linearGradient id=%22g%22 x1=%220%%22 y1=%220%%22 x2=%22100%%22 y2=%22100%%22><stop offset=%220%%22 stop-color=%22%234a7cff%22/><stop offset=%22100%%22 stop-color=%22%231e4bd2%22/></linearGradient></defs><rect width=%22100%22 height=%22100%22 rx=%2220%22 fill=%22url(%23g)%22/><text x=%2250%22 y=%2265%22 text-anchor=%22middle%22 font-size=%2250%22 font-weight=%22bold%22 fill=%22%23fff%22 font-family=%22Arial%22>B</text></svg>">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><defs><linearGradient id=%22g%22 x1=%220%%22 y1=%220%%22 x2=%22100%%22 y2=%22100%%22><stop offset=%220%%22 stop-color=%22%234a7cff%22/><stop offset=%22100%%22 stop-color=%22%231e4bd2%22/></linearGradient></defs><rect width=%22100%22 height=%22100%22 rx=%2220%22 fill=%22url(%23g)%22/><text x=%2250%22 y=%2268%22 font-size=%2236%22 font-family=%22Arial%22 font-weight=%22bold%22 text-anchor=%22middle%22 fill=%22%23fff%22>💼</text></svg>">
 <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -14,24 +14,46 @@
    Dual theme system — Light / Dark */
 *,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
 
-/* Light Theme - default when no data-theme set */
-[data-theme="light"], :root{
-  --bg:#f5f6fa;--surface:#ffffff;--surface-soft:#f0f1f5;--surface-hover:#e8e9ee;
-  --accent:#4a7cff;--accent-light:#e8eeff;--accent-hover:#3a6ae8;
-  --success:#10b981;--success-bg:#d1fae5;--warning:#f59e0b;--warning-bg:#fef3c7;
-  --danger:#ef4444;--danger-bg:#fee2e2;--info:#3b82f6;--info-bg:#dbeafe;
-  --fg:#1e1e2e;--fg-2nd:#5a5d6e;--fg-3rd:#8b8fa0;--fg-4th:#b0b4c4;
-  --bd:#e2e4ea;--bd-2:#d0d2da;
-  --sh-sm:0 1px 2px rgba(0,0,0,.04);--sh:0 1px 3px rgba(0,0,0,.06),0 1px 2px rgba(0,0,0,.04);
-  --sh-md:0 4px 16px rgba(0,0,0,.08);--sh-lg:0 8px 32px rgba(0,0,0,.12);
-  --side-bg:linear-gradient(180deg,#f5f6fa,#ffffff);
-  --side-text:#1e1e2e;--side-input-bg:rgba(0,0,0,.03);--side-input-bd:rgba(0,0,0,.06);
-  --side-label:rgba(0,0,0,.25);
-  --chip-bg:#e8eeff;--chip-text:#4a7cff;--chip-del:rgba(74,124,255,.3);
-  --modal-overlay:rgba(0,0,0,.3);--scrollbar-thumb:#d0d2da;
-  --img-checked-bd:#4a7cff;--img-checked-bg:rgba(74,124,255,.08);
+/* Light Theme */
+:root{
+  --bg:#f4f5f7;
+  --surface:#fff;
+  --surface-soft:#f0f2f5;
+  --surface-hover:#e8eaf0;
+  --accent:#1e4bd2;
+  --accent-light:#eef2ff;
+  --accent-hover:#163ab5;
+  --success:#0f9242;
+  --success-bg:#ecfdf5;
+  --warning:#d97706;
+  --warning-bg:#fffbeb;
+  --danger:#dc2626;
+  --danger-bg:#fef2f2;
+  --info:#2563eb;
+  --info-bg:#eff6ff;
+  --fg:#0f1117;
+  --fg-2nd:#525866;
+  --fg-3rd:#868c98;
+  --fg-4th:#b0b5c0;
+  --bd:#e3e5ea;
+  --bd-2:#c8ccd4;
+  --r-xs:4px;--r-sm:6px;--r-md:10px;--r-lg:16px;
+  --sh-sm:0 1px 2px rgba(0,0,0,.04);
+  --sh:0 1px 3px rgba(0,0,0,.06),0 1px 2px rgba(0,0,0,.04);
+  --sh-md:0 4px 16px rgba(0,0,0,.07);
+  --sh-lg:0 8px 32px rgba(0,0,0,.09);
+  --ease:cubic-bezier(.4,0,.2,1);--dur:.2s;--side-w:320px;--header-h:54px;
+  --side-bg:#f4f5f7;
+  --side-text:#0f1117;
+  --side-input-bg:rgba(0,0,0,.04);
+  --side-input-bd:rgba(0,0,0,.08);
+  --side-label:rgba(0,0,0,.35);
+  --chip-bg:#eef2ff;--chip-text:#1e4bd2;--chip-del:rgba(30,75,210,.3);
+  --modal-overlay:rgba(0,0,0,.4);--scrollbar-thumb:#c8ccd4;
+  --img-checked-bd:#1e4bd2;--img-checked-bg:rgba(30,75,210,.08);
 }
 
+/* Dark Theme */
 [data-theme="dark"]{
   --bg:#0f1117;--surface:#1a1d27;--surface-soft:#22252f;--surface-hover:#2a2d38;
   --accent:#4a7cff;--accent-light:#1e2a4a;--accent-hover:#6b96ff;
@@ -424,7 +446,7 @@ function updateThemeUI(theme) {
   document.getElementById('themeIcon').innerHTML = isDark
     ? '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>'
     : '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>';
-  document.getElementById('themeLabel').textContent = isDark ? '☀️ 亮色' : '🌙 暗色';
+  document.getElementById('themeLabel').textContent = isDark ? '亮色' : '暗色';
 }
 
 function clearLog() {
@@ -433,7 +455,7 @@ function clearLog() {
 
 
 function loadConfig() {
-  fetch('/api/config').then(r=>{if(!r.ok)throw new Error('HTTP '+r.status);return r.json()}).then(cfg => {
+  fetch('/api/config').then(r=>r.json()).then(cfg => {
     config = cfg.config || cfg;
     // 填充所有默认值
     if (!config.browser) config.browser = {};
@@ -445,7 +467,7 @@ function loadConfig() {
     config.rate_limit = Object.assign({enabled:true,max_per_hour:30,max_per_day:100}, config.rate_limit);
     config.retry = Object.assign({max_attempts:3,base_delay:2,backoff_factor:2}, config.retry);
     if (!config.accounts || !config.accounts.length) {
-      config.accounts = [{name:'主账号',enabled:true,cookie_file:'zhipin_cookies.json',image_files:[],message_interval_min:3,message_interval_max:8,jobs:[{enabled:true,city:'上海',query:'数据分析',scroll_pages:5,greeting_message:defaultGreeting}]}];
+      config.accounts = [{name:'主账号',enabled:true,cookie_file:'zhipin_cookies.json',image_files:[],message_interval_min:3,message_interval_max:8,jobs:[{enabled:true,city:'上海',query:'AI产品经理',scroll_pages:5,greeting_message:defaultGreeting}]}];
     }
     // 填充每个账号和岗位的默认值
     config.accounts.forEach(function(acc) {
@@ -468,19 +490,11 @@ function loadConfig() {
     renderJobs();
     updateSbarJobs();
     refreshImageList();
-    addLog('SUCCESS', '配置已加载');
-  }).catch(function(e){console.error('loadConfig:',e);addLog('ERROR','加载配置失败: '+e.message);});
+  }).catch(function(e){console.error('loadConfig:',e);});
 }
 
 function saveConfig() {
-  if (!config) {
-    addLog('ERROR', '配置未加载，请刷新页面');
-    return Promise.reject(new Error('配置未加载'));
-  }
-  return fetch('/api/config',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({config:config})})
-    .then(r=>{if(!r.ok)throw new Error('保存失败: '+r.status);return r.json()})
-    .then(d=>{if(d.status!=='ok')throw new Error(d.message||'保存失败');addLog('SYSTEM','配置已保存')})
-    .catch(e=>{addLog('ERROR', '保存配置失败: '+e.message);throw e});
+  return fetch('/api/config',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({config:config})}).then(r=>r.json()).then(()=>{addLog('SYSTEM','配置已保存')});
 }
 
 function renderAccounts() {
@@ -597,10 +611,10 @@ function renderJobs() {
     '<div class="job-item">'+
       '<span class="job-toggle toggle-switch'+(j.enabled!==false?' on':'')+'" onclick="event.stopPropagation();toggleJob('+i+')"></span>'+
       '<div class="job-info" onclick="editJob('+i+')">'+
-        '<div class="job-query">'+escHtml(decodeURIComponent(j.query||''))+'</div>'+
-        '<div class="job-city">'+escHtml(decodeURIComponent(j.city||''))+(j.scroll_pages?' · '+j.scroll_pages+'页':'')+'</div>'+
+        '<div class="job-query">'+escHtml(j.query||'')+'</div>'+
+        '<div class="job-city">'+escHtml(j.city||'')+(j.scroll_pages?' · '+j.scroll_pages+'页':'')+'</div>'+
       '</div>'+
-      '<span class="job-badge">'+(decodeURIComponent(j.city||''))+'</span>'+
+      '<span class="job-badge">'+(j.city||'')+'</span>'+
       '<span class="job-del" onclick="event.stopPropagation();deleteJob('+i+')" title="删除">✕</span>'+
     '</div>'
   ).join('');
@@ -610,7 +624,7 @@ function updateSbarJobs() {
   const a = config.accounts[activeAccountIdx];
   const el = document.getElementById('sbarJobs');
   if (a && a.jobs && a.jobs.length) {
-    el.innerHTML = a.jobs.map((j,i) => '<div class="sbar-job-item" onclick="editJob('+i+')"><span class="sbar-job-query">'+escHtml(decodeURIComponent(j.query||''))+'</span><span class="sbar-job-city">'+escHtml(decodeURIComponent(j.city||''))+'</span></div>').join('');
+    el.innerHTML = a.jobs.map((j,i) => '<div class="sbar-job-item" onclick="editJob('+i+')"><span class="sbar-job-query">'+escHtml(j.query||'')+'</span><span class="sbar-job-city">'+escHtml(j.city||'')+'</span></div>').join('');
   } else {
     el.innerHTML = '<span style="color:var(--fg-3rd);font-size:10px;">0 个岗位</span>';
   }
@@ -627,7 +641,7 @@ function renderImageGrid() {
   }
   grid.innerHTML = availableImages.map(function(f) {
     var checked = selected.includes(f);
-    var enc = escJs(f);
+    var enc = escAttr(f);
     var name = f.replace('dashboard/', '');
     return '<div class="image-grid-item' + (checked ? ' checked' : '') + '" onclick="toggleImageSelect(\'' + enc + '\')">' +
       '<div class="img-del-btn" onclick="event.stopPropagation();deleteImageFile(\'' + enc + '\')" title="\u5220\u9664\u6b64\u56fe\u7247">\u2716</div>' +
@@ -660,7 +674,7 @@ function renderImageChips() {
     return;
   }
   el.innerHTML = a.image_files.map(f =>
-    '<span class="chip">'+escHtml(f.replace('dashboard/',''))+'<span class="chip-remove" onclick="removeImage(\''+escJs(f)+'\')">✕</span></span>'
+    '<span class="chip">'+escHtml(f.replace('dashboard/',''))+'<span class="chip-remove" onclick="removeImage(\''+escAttr(f)+'\')">✕</span></span>'
   ).join('');
   updateImageCountBadge();
 }
@@ -676,15 +690,12 @@ function removeImage(name) {
   deleteImageFile(name);
 }
 
-function deleteImageFile(name) { 
-  name = decodeURIComponent(name);
+function deleteImageFile(name) { name = decodeURIComponent(name);
   if (!confirm('确定删除图片文件吗？这将从服务器上彻底删除此图片。')) return;
-  // 构造请求体，支持 dashboard/ 前缀或纯文件名
-  const reqPath = name.startsWith('dashboard/') ? name : 'dashboard/' + name.replace(/^dashboard[\\/]/, '');
   fetch('/api/images/delete', {
     method:'POST',
     headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({path:reqPath})
+    body:JSON.stringify({filename:name})
   }).then(r=>r.json()).then(data => {
     if (data.status === 'ok') {
       addLog('INFO', '已删除图片文件: ' + name);
@@ -692,8 +703,8 @@ function deleteImageFile(name) {
       const a = config.accounts[activeAccountIdx];
       if (a && a.image_files) {
         a.image_files = a.image_files.filter(f => {
-          const fName = f.replace('dashboard/', '').replace('dashboard\\', '');
-          const delName = name.replace('dashboard/', '').replace('dashboard\\', '');
+          const fName = f.replace('dashboard/', '');
+          const delName = name.replace('dashboard/', '');
           return fName !== delName;
         });
       }
@@ -701,69 +712,13 @@ function deleteImageFile(name) {
       for (const acc of config.accounts) {
         if (acc && acc.image_files) {
           acc.image_files = acc.image_files.filter(f => {
-            const fName = f.replace('dashboard/', '').replace('dashboard\\', '');
-            const delName = name.replace('dashboard/', '').replace('dashboard\\', '');
+            const fName = f.replace('dashboard/', '');
+            const delName = name.replace('dashboard/', '');
             return fName !== delName;
           });
         }
       }
       saveConfig(); // 持久化保存
-      refreshImageList();
-    } else {
-      addLog('ERROR', '删除失败: ' + (data.message||''));
-    }
-  }).catch(e => addLog('ERROR', '删除异常: ' + e.message));
-}
-
-function deleteAllSelectedImages() {
-  const a = config.accounts[activeAccountIdx];
-  if (!a || !a.image_files || !a.image_files.length) {
-    addLog('INFO', '没有已选的图片需要删除');
-    return;
-  }
-  const count = a.image_files.length;
-  if (!confirm('确定删除所有已选的 ' + count + ' 张图片文件吗？这将从服务器上彻底删除这些图片。')) return;
-  const filesToDelete = [...a.image_files];
-  let deleted = 0;
-  let failed = 0;
-  const promises = filesToDelete.map(f => {
-    return fetch('/api/images/delete', {
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({path:f})
-    }).then(r=>r.json()).then(data => {
-      if (data.status === 'ok') deleted++;
-      else failed++;
-    }).catch(() => failed++);
-  });
-  Promise.all(promises).then(() => {
-    addLog('INFO', '批量删除完成: ' + deleted + ' 成功, ' + failed + ' 失败');
-    // 从所有账号中移除已删除的图片
-    for (const acc of config.accounts) {
-      if (acc && acc.image_files) {
-        acc.image_files = acc.image_files.filter(f => !filesToDelete.includes(f));
-      }
-    }
-    saveConfig();
-    refreshImageList();
-  });
-}
-
-function deleteAllImages() {
-  if (!confirm('确定删除所有图片文件吗？此操作不可恢复！')) return;
-  fetch('/api/images/delete', {
-    method:'POST',
-    headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({delete_all:true})
-  }).then(r=>r.json()).then(data => {
-    if (data.status === 'ok') {
-      addLog('INFO', '已删除全部 ' + (data.deleted || 0) + ' 张图片');
-      for (const acc of config.accounts) {
-        if (acc && acc.image_files) {
-          acc.image_files = [];
-        }
-      }
-      saveConfig();
       refreshImageList();
     } else {
       addLog('ERROR', '删除失败: ' + (data.message||''));
@@ -794,32 +749,30 @@ function handleImageUpload(event) {
   event.target.value = '';
 }
 
-
-function cleanupStaleImages() {
-  fetch('/api/images/list')
-    .then(r => r.json())
-    .then(data => {
-      if (data.status !== 'ok') return;
-      const existingImages = data.images || [];
-      for (const acc of config.accounts) {
-        if (acc && acc.image_files && acc.image_files.length) {
-          acc.image_files = acc.image_files.filter(f => existingImages.includes(f));
-        }
-      }
-      saveConfig();
-    })
-    .catch(() => {});
-}
-
 function refreshImageList() {
-  cleanupStaleImages();
   fetch('/api/images/list')
     .then(r=>r.json())
     .then(data => { if (data.status === 'ok') { availableImages = data.images; renderImageGrid(); renderImageChips(); } })
     .catch(()=>{});
 }
 
-
+function uploadCookieFile(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  const formData = new FormData();
+  formData.append('file', file);
+  fetch('/api/upload/cookie', { method:'POST', body:formData })
+    .then(r=>r.json())
+    .then(data => {
+      if (data.status === 'ok') {
+        document.getElementById('accCookie').value = data.filename;
+        onAccChange();
+        addLog('INFO', 'Cookie文件已上传: ' + data.filename);
+      } else { addLog('ERROR', '上传失败: ' + (data.message||'')); }
+    })
+    .catch(e => addLog('ERROR', '上传异常: ' + e.message));
+  event.target.value = '';
+}
 
 function switchAccount(i) { activeAccountIdx = i; renderAccounts(); renderAccountConfig(); renderJobs(); updateSbarJobs(); }
 
@@ -869,8 +822,8 @@ function showJobModal(job) {
   overlay.innerHTML =
     '<div class="modal">'+
       '<h3>'+(editingJobIdx>=0?'编辑岗位':'添加岗位')+'</h3>'+
-      '<div class="modal-field"><label>城市</label><input id="modalCity" value="'+escHtml(job.city||'')+'" placeholder="例如: 上海"></div>'+
-      '<div class="modal-field"><label>搜索关键词</label><input id="modalQuery" value="'+escHtml(job.query||'')+'" placeholder="例如: AI产品经理"></div>'+
+      '<div class="modal-field"><label>城市</label><input id="modalCity" value="'+escAttr(job.city||'')+'" placeholder="例如: 上海"></div>'+
+      '<div class="modal-field"><label>搜索关键词</label><input id="modalQuery" value="'+escAttr(job.query||'')+'" placeholder="例如: AI产品经理"></div>'+
       '<div class="modal-field"><label>翻页数</label><input id="modalPages" type="number" value="'+(job.scroll_pages||5)+'" min="1" max="20"></div>'+
       '<div class="modal-field"><label>打招呼消息</label><textarea id="modalGreeting" placeholder="输入自定义打招呼消息" style="min-height:80px">'+escHtml(job.greeting_message||defaultGreeting)+'</textarea></div>'+
       '<div class="modal-actions">'+
@@ -959,25 +912,14 @@ function startAll() {
   if (btn) { btn.disabled = true; btn.textContent = '⏳ 启动中...'; }
   // 先保存配置
   saveConfig()
-    .then(() => {
-      // 先重置调度器状态
-      return fetch('/api/scheduler/reset', { method:'POST' });
-    })
+    .then(() => fetch('/api/scheduler/reset', { method:'POST' }))
     .then(r => r.json())
-    .then(data => {
-      if (data.status !== 'ok') {
-        throw new Error('调度器重置失败: ' + (data.message || '未知错误'));
-      }
+    .then(() => {
       // 稍微延迟确保状态已完全重置
       setTimeout(() => {
-        if (socket && socket.connected) {
-          socket.emit('start_all');
-          addLog('SYSTEM','正在启动所有任务...');
-        } else {
-          addLog('ERROR', 'WebSocket 未连接，请刷新页面重试');
-          if (btn) { btn.disabled = false; btn.textContent = '▶ 启动'; btn.style.display = ''; }
-        }
-      }, 500);
+        socket.emit('start_all');
+        addLog('SYSTEM','正在启动所有任务...');
+      }, 200);
     })
     .catch(e => {
       addLog('ERROR', '启动失败: ' + e.message);
@@ -1024,7 +966,6 @@ function updateStats() {
 
 function escHtml(t){const d=document.createElement('div');d.textContent=t;return d.innerHTML;}
 function escAttr(t){return (t||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
-function escJs(t){return encodeURIComponent(t||'').replace(/%2F/g,'/').replace(/%20/g,' ');}
 
 function addLog(level,message){
   const area=document.getElementById('logArea');
@@ -1063,7 +1004,7 @@ socket.on('bot_status',(data)=>{setControls(data.running);if(!data.running)docum
 socket.on('scheduler_status',(data)=>{
   setControls(data.running);
   const lbl=document.getElementById('currentTaskLabel');
-  if(data.current&&lbl) lbl.textContent=data.current.account+' / '+(data.current.query?decodeURIComponent(data.current.query):'')+'('+(data.current.city?decodeURIComponent(data.current.city):'')+')';
+  if(data.current&&lbl) lbl.textContent=data.current.account+' / '+decodeURIComponent(data.current.query||'')+'('+decodeURIComponent(data.current.city||'')+')';
   else if(!data.running&&lbl) lbl.textContent='';
   if(!data.running){
     const btn=document.getElementById('btnStartAll');
@@ -1090,27 +1031,6 @@ socket.on('login_required', (data) => {
 
 loadTheme();
 loadConfig();
-
-
-function uploadCookieFile(input) {
-  const file = input.target.files[0];
-  if (!file) return;
-  const formData = new FormData();
-  formData.append('file', file);
-  fetch('/api/cookies/upload', { method:'POST', body: formData })
-    .then(r=>r.json())
-    .then(data => {
-      if (data.status === 'ok') {
-        addLog('SUCCESS', 'Cookie 已上传: ' + file.name);
-        config.accounts[activeAccountIdx].cookie_file = 'zhipin_cookies.json';
-        renderAccountConfig();
-      } else {
-        addLog('ERROR', 'Cookie 上传失败: ' + (data.message || ''));
-      }
-    })
-    .catch(e => addLog('ERROR', 'Cookie 上传失败: ' + e.message));
-  input.value = '';
-}
 </script>
 <!-- Login Modal -->
 <div class="login-modal-overlay" id="loginModal">
@@ -1126,8 +1046,6 @@ function uploadCookieFile(input) {
 
 </body>
 </html>
-
-
 
 
 
