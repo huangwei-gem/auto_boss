@@ -21,6 +21,7 @@ socketio = SocketIO(app, cors_allowed_origins="*", async_mode="threading")
 _scheduler_lock = threading.Lock()
 _scheduler_thread = None
 _scheduler_stop = threading.Event()
+_scheduler_run_id = 0
 _scheduler_running = False
 _bot = None
 _config = None
@@ -251,11 +252,12 @@ def api_put_config():
 def api_add_account():
     global _config
     try:
+        data = request.get_json() or {}
         idx = len(_config["accounts"])
         _config["accounts"].append({
             "name": f"账号{idx + 1}",
             "enabled": True,
-            "cookie_file": "zhipin_cookies.json",
+            "cookie_file": data.get("cookie_file", "zhipin_cookies.json"),
             "image_files": [],
             "message_interval_min": 3,
             "message_interval_max": 8,
@@ -355,19 +357,21 @@ def api_upload_cookie():
     f = request.files.get("file")
     if not f or not f.filename:
         return jsonify({"status": "error", "message": "未选择文件"}), 400
-    save_path = os.path.join(BASE_DIR, "zhipin_cookies.json")
+    safe_name = os.path.basename(f.filename)
+    if not safe_name.endswith(".json"):
+        safe_name += ".json"
+    save_path = os.path.join(BASE_DIR, safe_name)
     f.save(save_path)
-    return jsonify({"status": "ok", "filename": "zhipin_cookies.json"})
+    return jsonify({"status": "ok", "filename": safe_name})
 
 
 @app.route("/api/images/delete", methods=["POST"])
 def api_delete_image():
-    """删除图片文件。"""
+    """删除图片文件（支持单张删除、批量指定删除、全部删除）。"""
     data = request.get_json() or {}
     path = data.get("path", "")
     delete_all = data.get("delete_all", False)
-    if not path and not delete_all:
-        return jsonify({"status": "error", "message": "path 不能为空或需要 delete_all=True"}), 400
+    delete_paths = data.get("paths", [])
     dashboard_dir = os.path.join(BASE_DIR, "dashboard")
     
     # 批量删除所有图片
@@ -376,7 +380,7 @@ def api_delete_image():
             deleted = 0
             for fn in os.listdir(dashboard_dir):
                 fp = os.path.join(dashboard_dir, fn)
-                if os.path.isfile(fp):
+                if os.path.isfile(fp) and fn.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp')):
                     try:
                         os.remove(fp)
                         deleted += 1
@@ -385,13 +389,47 @@ def api_delete_image():
             return jsonify({"status": "ok", "deleted": deleted})
         return jsonify({"status": "ok", "deleted": 0})
     
-    # 单个删除 - 支持完整路径或文件名
+    # 批量删除指定路径列表
+    if delete_paths:
+        deleted = 0
+        for p in delete_paths:
+            p = urllib.parse.unquote(p)
+            basename = os.path.basename(p)
+            if os.path.exists(dashboard_dir):
+                for fn in os.listdir(dashboard_dir):
+                    if fn == basename or fn == p.replace('dashboard/', '').replace('dashboard\\', ''):
+                        fp = os.path.join(dashboard_dir, fn)
+                        if os.path.isfile(fp):
+                            try:
+                                os.remove(fp)
+                                deleted += 1
+                            except Exception:
+                                pass
+        return jsonify({"status": "ok", "deleted": deleted})
+    
+    # 单个删除
+    if not path:
+        return jsonify({"status": "error", "message": "path 不能为空"}), 400
+    path = urllib.parse.unquote(path)
     basename = os.path.basename(path)
-    # 也尝试去除可能的 dashboard/ 前缀
     clean_name = basename.replace("dashboard/", "").replace("dashboard\\", "")
+    # 尝试精确匹配文件名
     if os.path.exists(dashboard_dir):
         for fn in os.listdir(dashboard_dir):
-            if clean_name == fn or basename == fn:
+            if fn == clean_name or fn == basename:
+                filepath = os.path.join(dashboard_dir, fn)
+                if os.path.isfile(filepath):
+                    try:
+                        os.remove(filepath)
+                        return jsonify({"status": "ok"})
+                    except Exception as e:
+                        return jsonify({"status": "error", "message": str(e)}), 500
+        # 精确匹配失败时，尝试模糊匹配（忽略大小写和特殊字符）
+        import re as _re
+        clean_key = _re.sub(r"[\s_\-]", "", clean_name.lower())
+        for fn in os.listdir(dashboard_dir):
+            fn_key = _re.sub(r"[\s_\-]", "", fn.lower())
+            if fn_key == clean_key or clean_key in fn_key or fn_key in clean_key:
                 filepath = os.path.join(dashboard_dir, fn)
                 if os.path.isfile(filepath):
                     try:
@@ -479,10 +517,11 @@ def api_upload_cookies():
     try:
         content_data = f.read().decode("utf-8")
         json.loads(content_data)  # 验证 JSON 格式
-        dst = os.path.join(BASE_DIR, "zhipin_cookies.json")
+        safe_name = os.path.basename(f.filename) if f.filename else "zhipin_cookies.json"
+        dst = os.path.join(BASE_DIR, safe_name)
         with open(dst, "w", encoding="utf-8") as out:
             out.write(content_data)
-        return jsonify({"status": "ok", "filename": "zhipin_cookies.json"})
+        return jsonify({"status": "ok", "filename": safe_name})
     except json.JSONDecodeError:
         return jsonify({"status": "error", "message": "无效的 JSON 格式"}), 400
     except Exception as e:
@@ -494,7 +533,7 @@ def api_cookies_list():
     """列出可用的 Cookie 文件。"""
     cookies = []
     for fn in os.listdir(BASE_DIR):
-        if fn.endswith(".json") and "cookie" in fn.lower():
+        if fn.endswith(".json") and (fn != "bot_config.json" and fn != "chats_log.json" and fn != "chatted_jobs.json"):
             cookies.append(fn)
     return jsonify({"status": "ok", "cookies": cookies})
 
@@ -516,28 +555,27 @@ def api_delete_cookie():
 
 @socketio.on("start_all")
 def on_start_all(data=None):
-    global _scheduler_thread, _scheduler_stop, _bot, _scheduler_running, _config
+    global _scheduler_thread, _scheduler_stop, _bot, _scheduler_running, _config, _scheduler_run_id
 
     sid = request.sid
 
-    with _scheduler_lock:
-        if _scheduler_running:
-            emit("bot_log", {"message": "[SYSTEM] 调度器已在运行中，正在停止旧调度器..."})
-            _scheduler_stop.set()
-            if _bot:
-                try:
-                    _bot.stop()
-                except Exception:
-                    pass
-                _bot = None
-            if _scheduler_thread and _scheduler_thread.is_alive():
-                _scheduler_thread.join(timeout=5)
-            _scheduler_thread = None
-            _scheduler_running = False
-            _scheduler_stop.clear()
-            import time
-            time.sleep(1)
-            logger.info("已停止旧调度器线程，重新启动")
+    # Stop old scheduler if running
+    if _scheduler_running:
+        emit("bot_log", {"message": "[SYSTEM] 正在停止旧调度器..."})
+        _scheduler_stop.set()
+        if _bot:
+            try:
+                _bot.stop()
+            except Exception:
+                pass
+            _bot = None
+        if _scheduler_thread and _scheduler_thread.is_alive():
+            _scheduler_thread.join(timeout=10)
+        _scheduler_thread = None
+        _scheduler_running = False
+        _scheduler_stop.clear()
+        time.sleep(1)
+        logger.info("已停止旧调度器线程，重新启动")
 
     _config = load_config()
     tasks = flatten_jobs_for_run(_config)
@@ -545,17 +583,19 @@ def on_start_all(data=None):
         emit("bot_log", {"message": "[SYSTEM] 没有启用的任务（请检查账号和岗位的 enabled 状态）"})
         return
 
+    _scheduler_run_id += 1
+    my_run_id = _scheduler_run_id
+
     emit("bot_log", {"message": f"[SYSTEM] 调度器启动，共 {len(tasks)} 个任务"})
     emit("bot_status", {"running": True})
     emit("scheduler_status", {"running": True, "total": len(tasks), "completed": 0, "current": None})
 
     _scheduler_stop.clear()
-    with _scheduler_lock:
-        _scheduler_running = True
-        scheduler = TaskScheduler(tasks, sid)
-        _bot = scheduler
+    _scheduler_running = True
+    scheduler = TaskScheduler(tasks, sid)
+    _bot = scheduler
 
-    def _run_scheduler():
+    def _run_scheduler(run_id):
         global _scheduler_running, _scheduler_thread
         try:
             scheduler.run(sid)
@@ -568,18 +608,18 @@ def on_start_all(data=None):
             except Exception:
                 pass
         finally:
-            with _scheduler_lock:
+            # Only clear running flag if this is still the current run
+            if run_id == _scheduler_run_id:
                 _scheduler_running = False
                 _scheduler_thread = None
-            try:
-                socketio.emit("bot_status", {"running": False}, to=sid)
-                socketio.emit("scheduler_status", {"running": False}, to=sid)
-            except Exception:
-                pass
+                try:
+                    socketio.emit("bot_status", {"running": False}, to=sid)
+                    socketio.emit("scheduler_status", {"running": False}, to=sid)
+                except Exception:
+                    pass
 
-    t = threading.Thread(target=_run_scheduler, daemon=True)
-    with _scheduler_lock:
-        _scheduler_thread = t
+    t = threading.Thread(target=_run_scheduler, args=(my_run_id,), daemon=True)
+    _scheduler_thread = t
     t.start()
 
 

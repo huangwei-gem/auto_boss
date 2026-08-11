@@ -569,42 +569,60 @@ class BotCore:
         self._log("WARN", f"未找到城市 {city_name} 的编码")
         return ""
     def _resolve_images(self) -> list:
-        """解析作品图片路径，自动从 dashboard 目录加载。"""
+        """解析作品图片路径，只使用配置文件中已选中的图片。"""
         resolved = []
         _script_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         web_app_dir = os.path.join(_script_dir, "web_app")
-        dashboard_dir = os.path.join(web_app_dir, "dashboard")
+        web_dashboard = os.path.join(web_app_dir, "dashboard")
 
-        # 1. 从配置的 image_files 解析
+        self._log("INFO", f"开始解析图片，配置中的 image_files: {self._image_files}")
+
+        # 只从配置的 image_files 解析（不自动加载 dashboard 目录）
+        seen = set()
         for img in self._image_files:
-            if img.startswith("dashboard/"):
-                full_path = os.path.join(web_app_dir, img)
-            elif os.path.isabs(img):
-                full_path = img
-            else:
-                full_path = os.path.join(dashboard_dir, os.path.basename(img))
+            if isinstance(img, str):
+                if img.startswith("dashboard/"):
+                    full_path = os.path.join(web_app_dir, img)
+                elif os.path.isabs(img):
+                    full_path = img
+                else:
+                    full_path = os.path.join(web_dashboard, os.path.basename(img))
+                self._log("INFO", f"检查图片路径: {full_path}")
+                if os.path.isfile(full_path):
+                    resolved.append(full_path)
+                    seen.add(os.path.basename(full_path).lower())
+                    self._log("INFO", f"图片存在: {os.path.basename(full_path)}")
+                else:
+                    self._log("WARN", f"配置图片不存在: {full_path}")
 
-            if os.path.isfile(full_path):
+        # 如果配置的图片列表为空，尝试从 dashboard 目录加载
+        if not self._image_files and os.path.isdir(web_dashboard):
+            self._log("INFO", "配置图片列表为空，尝试从 dashboard 目录加载...")
+            all_files = [f for f in os.listdir(web_dashboard) if f.lower().endswith((".png", ".jpg", ".jpeg", ".gif", ".webp"))]
+            for fname in sorted(all_files):
+                full_path = os.path.join(web_dashboard, fname)
                 resolved.append(full_path)
-            else:
-                self._log("WARN", f"图片不存在: {full_path}")
+                self._log("INFO", f"自动加载图片: {fname}")
 
-        # 2. 如果仍未找到，自动从 dashboard 目录加载
-        if not resolved and os.path.isdir(dashboard_dir):
-            for fn in sorted(os.listdir(dashboard_dir)):
-                fp = os.path.join(dashboard_dir, fn)
-                if os.path.isfile(fp) and fn.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp')):
-                    resolved.append(fp)
-            if resolved:
-                self._log("INFO", f"自动加载 {len(resolved)} 张作品图片")
+        # 去重（保留首次出现的路径）
+        final_resolved = list(dict.fromkeys(resolved))
 
-        if not resolved:
-            self._log("INFO", "没有作品图片")
+        if final_resolved:
+            self._log("INFO", f"共准备 {len(final_resolved)} 张作品图片")
+            for img in final_resolved:
+                self._log("INFO", f"  图片: {os.path.basename(img)}")
         else:
-            self._log("INFO", f"共准备 {len(resolved)} 张作品图片")
+            # dashboard 目录提示
+            if os.path.isdir(web_dashboard):
+                all_files = [f for f in os.listdir(web_dashboard) if f.lower().endswith((".png", ".jpg", ".jpeg", ".gif", ".webp"))]
+                if all_files:
+                    self._log("INFO", f"dashboard 目录有 {len(all_files)} 张图片，但未选中任何图片，请先在 Web 界面选择图片")
+                else:
+                    self._log("WARN", "没有作品图片 - 请先在 Web 界面上传图片到 dashboard 目录")
+            else:
+                self._log("WARN", "没有作品图片 - 请先在 Web 界面上传图片到 dashboard 目录")
 
-        return resolved
-
+        return final_resolved
     def _step_browse_jobs(self):
         """遍历岗位列表并投递。"""
         # 先解析图片
@@ -664,7 +682,19 @@ class BotCore:
         """处理页面断开连接，尝试恢复。"""
         try:
             self._log("WARN", "开始处理页面断开，尝试恢复浏览器...")
-            # 1. 安全释放旧的浏览器实例
+            # 1. 先尝试轻量级恢复：重新导航到首页
+            if self.dp:
+                try:
+                    self.dp.get("https://www.zhipin.com")
+                    self._random_delay(2, 3)
+                    _ = self.dp.url
+                    self._log("INFO", "轻量级恢复成功")
+                    self._load_cookies()
+                    return True
+                except Exception:
+                    self._log("WARN", "轻量级恢复失败，尝试重初始化浏览器...")
+
+            # 2. 安全释放旧的浏览器实例
             if self.dp:
                 try:
                     self.dp.quit()
@@ -672,27 +702,37 @@ class BotCore:
                     self._log("WARN", f"退出旧浏览器时异常（可忽略）: {e}")
                 finally:
                     self.dp = None
-            # 2. 等待浏览器进程完全释放
+            # 3. 等待浏览器进程完全释放
             self._random_delay(3, 6)
-            # 3. 重新初始化浏览器
+            # 4. 重新初始化浏览器
             if not self._init_browser():
                 self._log("ERROR", "重新初始化浏览器失败")
                 return False
             self._log("INFO", "浏览器重新初始化成功")
-            # 4. 重新加载 cookie 并检查登录
+            # 5. 重新加载 cookie 并检查登录
             self._load_cookies()
             self._random_delay(2, 4)
             # 导航到首页检查登录状态
-            try:
-                self.dp.get("https://www.zhipin.com")
-                self._random_delay(2, 3)
-            except Exception:
-                pass
+            for _ in range(3):
+                try:
+                    self.dp.get("https://www.zhipin.com")
+                    self._random_delay(2, 3)
+                    _ = self.dp.url
+                    break
+                except Exception:
+                    self._random_delay(2, 3)
+            # 检查登录状态
             if self.check_login_status():
                 self._log("INFO", "页面断开后重新登录成功")
                 return True
-            # 如果 cookie 有效，直接返回 True
-            self._log("INFO", "页面断开后恢复成功（跳过登录检查）")
+            # 即使 check_login_status 返回 False，也尝试继续（可能是页面还没加载完）
+            # 再导航到首页确认一次
+            try:
+                self.dp.get("https://www.zhipin.com")
+                self._random_delay(2, 3)
+                self._log("INFO", "页面断开后恢复成功，继续执行")
+            except Exception as e:
+                self._log("WARN", f"恢复后导航到首页失败: {e}")
             return True
         except Exception as e:
             self._log("ERROR", f"处理页面断开异常: {e}")
@@ -710,8 +750,31 @@ class BotCore:
         if not url:
             return False
 
+        # 如果页面已断开，先尝试恢复
+        if _disconnect_retry == 0:
+            try:
+                _ = self.dp.url
+            except PageDisconnectedError:
+                self._log("WARN", "页面已断开，尝试恢复...")
+                if self._handle_disconnect():
+                    _disconnect_retry = 1
+                else:
+                    return False
+            except Exception:
+                pass
+
         try:
-            # ── 1. 导航到岗位详情页 ──
+            # ── 1. 导航到岗位详情页（参考源文件：dp.get(url)） ──
+            # 先检查页面是否连接，已断开则尝试恢复
+            try:
+                _ = self.dp.url
+            except PageDisconnectedError:
+                self._log("WARN", "导航前页面已断开，尝试恢复...")
+                if not self._handle_disconnect():
+                    return False
+            except Exception:
+                pass
+
             for _retry in range(3):
                 try:
                     self.dp.get(url)
@@ -731,24 +794,29 @@ class BotCore:
                 return False
 
             # 检查是否被重定向到登录页
-            current_url = self.dp.url
-            if "passport" in current_url or "login" in current_url:
-                self._log("WARN", "访问岗位详情时被重定向到登录页")
-                if self._login_required_cb:
-                    self._login_required_cb()
-                self._log("INFO", "请重新登录，登录后点击「确认登录」")
-                if not self._wait_for_login():
-                    self._log("ERROR", "登录超时")
-                    return False
-                self._save_cookies()
-                self._log("SUCCESS", "登录成功")
-                try:
-                    self.dp.get(url)
-                    self._random_delay(3, 6)
-                except PageDisconnectedError:
-                    return False
+            try:
+                current_url = self.dp.url
+                if "passport" in current_url or "login" in current_url:
+                    self._log("WARN", "访问岗位详情时被重定向到登录页")
+                    if self._login_required_cb:
+                        self._login_required_cb()
+                    self._log("INFO", "请重新登录，登录后点击「确认登录」")
+                    if not self._wait_for_login():
+                        self._log("ERROR", "登录超时")
+                        return False
+                    self._save_cookies()
+                    self._log("SUCCESS", "登录成功")
+                    try:
+                        self.dp.get(url)
+                        self._random_delay(3, 6)
+                    except PageDisconnectedError:
+                        return False
+            except PageDisconnectedError:
+                self._log("WARN", "页面断开")
+                return False
 
-            # ── 2. 查找沟通按钮（严格参考源文件 .btn.btn-startchat） ──
+            # ── 2. 查找沟通按钮（严格参考源文件 .btn btn-startchat） ──
+            # 先检查是否已沟通过（源文件：if dp.ele(".btn btn-startchat").text in "继续沟通"）
             chat_btn = self._find_chat_button(timeout=8)
             if chat_btn is None:
                 self._log("WARN", "未找到沟通按钮")
@@ -763,12 +831,12 @@ class BotCore:
             # ── 3. 获取信息（参考源文件） ──
             try:
                 boss_active = self.dp.ele(".boss-active-time", timeout=3).text
-                self._log("INFO", "上线状态: " + boss_active)
+                self._log("INFO", "上线状态: " + boss_active[:50])
             except Exception:
                 pass
             try:
                 company_scale = self.dp.ele(".icon-scale", timeout=3).text
-                self._log("INFO", "公司规模: " + company_scale)
+                self._log("INFO", "公司规模: " + company_scale[:50])
             except Exception:
                 pass
             try:
@@ -778,11 +846,11 @@ class BotCore:
                 pass
             try:
                 salary = self.dp.ele(".salary", timeout=3).text
-                self._log("INFO", "薪资: " + salary)
+                self._log("INFO", "薪资: " + salary[:50])
             except Exception:
                 pass
 
-            # ── 4. 点击立即沟通 ──
+            # ── 4. 点击立即沟通（源文件：dp.ele(".btn btn-startchat").click()） ──
             try:
                 chat_btn.click()
                 self._random_delay(2, 4)
@@ -790,7 +858,15 @@ class BotCore:
                 self._log("WARN", "点击沟通按钮失败: " + str(e))
                 return False
 
-            # ── 5. 输入消息 ──
+            # 检查页面是否断开
+            try:
+                _ = self.dp.url
+            except PageDisconnectedError:
+                self._log("WARN", "点击沟通按钮后页面断开，标记已处理")
+                self._mark_chatted(job)
+                return True
+
+            # ── 5. 输入消息（源文件：dp.ele(".input-area").input(message)） ──
             greeting = self._greeting_message or "您好，我是双一流的本科，应聘数据分析岗位。在校系统学习数据分析相关知识，掌握Excel、基础SQL与数据整理技能，具备数据思维。做事严谨细心，学习能力强，愿意踏实积累。十分认可贵公司，希望能获得面试机会。"
             try:
                 input_area = self.dp.ele(".input-area", timeout=5)
@@ -799,12 +875,18 @@ class BotCore:
                     self._random_delay(1, 2)
                 else:
                     self._log("WARN", "未找到输入框")
+                    # 尝试通过 JS 查找
+                    try:
+                        self.dp.run_js("document.querySelector('.input-area')?.focus()")
+                        self.dp.run_js(f"document.querySelector('.input-area')?.value='{greeting[:50]}'")
+                    except Exception:
+                        pass
                     return False
             except Exception as e:
                 self._log("WARN", "输入消息失败: " + str(e))
                 return False
 
-            # ── 6. 点击发送 ──
+            # ── 6. 点击发送（源文件：dp.ele(".send-message").click()） ──
             try:
                 send_btn = self.dp.ele(".send-message", timeout=5)
                 if send_btn:
@@ -826,7 +908,7 @@ class BotCore:
             # ── 7. 上传图片（参考源文件流程） ──
             if self._image_files:
                 self._random_delay(1, 2)
-                # 先关闭聊天窗口（参考源文件）
+                # 关闭聊天窗口（源文件：dp.ele(".icon-close").click()）
                 try:
                     close_btn = self.dp.ele(".icon-close", timeout=3)
                     if close_btn:
@@ -834,7 +916,7 @@ class BotCore:
                         self._random_delay(1, 2)
                 except Exception:
                     pass
-                # 重新点击沟通按钮进入新聊天（参考源文件）
+                # 重新点击沟通按钮（源文件：dp.ele(".btn btn-startchat").click()）
                 try:
                     continue_btn = self._find_chat_button(timeout=5)
                     if continue_btn:
@@ -883,27 +965,13 @@ class BotCore:
     def _find_chat_button(self, timeout=5):
         """
         查找沟通按钮。
-        严格参考源文件 mian.py 使用 .btn.btn-startchat 选择器。
+        严格参考源文件 mian.py 流程。
+        源文件使用 .btn btn-startchat（DrissionPage AND 语法，空格分隔类名）。
         """
-        self._random_delay(1, 2)
+        import time as _time
+        _time.sleep(1)
 
-        # 1. 优先使用 CSS 选择器 .btn.btn-startchat（源文件方式）
-        try:
-            btn = self.dp.ele(".btn.btn-startchat", timeout=timeout)
-            if btn:
-                return btn
-        except Exception:
-            pass
-
-        # 2. 使用单类名 .btn-startchat
-        try:
-            btn = self.dp.ele(".btn-startchat", timeout=timeout)
-            if btn:
-                return btn
-        except Exception:
-            pass
-
-        # 3. 文本匹配
+        # 1. 文本匹配 —— 最可靠（源文件：dp.ele(".btn btn-startchat").text）
         for chat_text in ("立即沟通", "继续沟通"):
             try:
                 btn = self.dp.ele(f"text:{chat_text}", timeout=timeout)
@@ -912,10 +980,35 @@ class BotCore:
             except Exception:
                 pass
 
-        # 4. 通过 JS 查找
+        # 2. DrissionPage AND 语法（源文件风格：.btn btn-startchat，空格分隔类名）
+        for and_sel in [".btn btn-startchat", ".btn-startchat", ".btn.btn-startchat", ".btn .btn-startchat"]:
+            try:
+                btn = self.dp.ele(and_sel, timeout=timeout)
+                if btn:
+                    return btn
+            except Exception:
+                pass
+
+        # 3. ka 属性选择器（boss直聘特有）
         try:
-            result = self.dp.run_js("""
-                var btns = document.querySelectorAll('a, button, div');
+            btn = self.dp.ele("[ka='btn-startchat']", timeout=timeout)
+            if btn:
+                return btn
+        except Exception:
+            pass
+
+        # 4. DrissionPage 特殊语法
+        try:
+            btn = self.dp.ele("tag:a@@class=btn-startchat", timeout=timeout)
+            if btn:
+                return btn
+        except Exception:
+            pass
+
+        # 5. JS 大范围查找（兜底）
+        try:
+            btn = self.dp.run_js("""
+                var btns = document.querySelectorAll('a, button, div, span');
                 for (var i = 0; i < btns.length; i++) {
                     var t = btns[i].textContent.trim();
                     if (t.indexOf('立即沟通') !== -1 || t.indexOf('继续沟通') !== -1) {
@@ -924,12 +1017,12 @@ class BotCore:
                 }
                 return null;
             """)
-            if result:
+            if btn:
                 for chat_text in ("立即沟通", "继续沟通"):
                     try:
-                        btn = self.dp.ele(f"text:{chat_text}", timeout=2)
-                        if btn:
-                            return btn
+                        b = self.dp.ele(f"text:{chat_text}", timeout=1)
+                        if b:
+                            return b
                     except Exception:
                         pass
         except Exception:
@@ -939,7 +1032,8 @@ class BotCore:
 
     def _upload_image(self, img_path):
         """
-        上传单张图片（参考源文件方式）。
+        上传单张图片。
+        严格参考源文件 mian.py 使用 click.to_upload() 方式。
         """
         if not os.path.isfile(img_path):
             self._log("WARN", f"上传图片文件不存在: {img_path}")
@@ -947,45 +1041,54 @@ class BotCore:
 
         abs_path = os.path.abspath(img_path)
 
-        # 方法1: 通过 file input 直接上传（最可靠）
+        # 策略1: 查找所有可能的图片上传按钮并使用 click.to_upload()
+        all_selectors = [
+            ".toolbar-btn-content icon btn-sendimg tooltip tooltip-top",
+            "[class*='btn-sendimg']",
+            ".btn-sendimg",
+            "[class*='sendimg']",
+            ".toolbar-btn-content",
+            "[class*='toolbar']",
+            ".chat-toolbar",
+            "[class*='upload']",
+            "[class*='image']",
+            "[class*='img']",
+            ".toolbar-btn-content .btn-sendimg",
+            ".toolbar-btn-content .icon.btn-sendimg",
+        ]
+        for sel in all_selectors:
+            try:
+                btn = self.dp.ele(sel, timeout=1)
+                if btn:
+                    try:
+                        btn.click.to_upload(abs_path)
+                        self._random_delay(2, 3)
+                        self._log("INFO", f"已上传图片: {os.path.basename(img_path)}")
+                        return True
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+
+        # 策略2: 直接找 input[type=file] 并输入路径
         try:
             file_input = self.dp.ele("tag:input@@type=file", timeout=3)
             if file_input:
                 file_input.input(abs_path)
                 self._random_delay(1, 2)
-                self._log("INFO", "通过 file input 上传图片")
+                self._log("INFO", f"已上传图片(文件框): {os.path.basename(img_path)}")
                 return True
         except Exception:
             pass
 
-        # 方法2: 点击图片上传按钮，然后等待 file input 出现
-        for selector in (
-            ".toolbar-btn-content .icon.btn-sendimg",
-            ".btn-sendimg",
-            "[class*='btn-sendimg']",
-            "[class*='sendimg']",
-            "[class*='toolbar']",
-        ):
-            try:
-                btn = self.dp.ele(selector, timeout=2)
-                if btn:
-                    btn.click()
-                    self._random_delay(0.5, 1)
-                    file_input = self.dp.ele("tag:input@@type=file", timeout=3)
-                    if file_input:
-                        file_input.input(abs_path)
-                        self._random_delay(1, 2)
-                        return True
-            except Exception:
-                pass
-
-        # 方法3: 通过 JS 触发文件选择
+        # 策略3: 通过 JS 创建 file input 并上传
         try:
             result = self.dp.run_js("""
                 var fileInput = document.querySelector('input[type="file"]');
                 if (!fileInput) {
                     fileInput = document.createElement('input');
                     fileInput.type = 'file';
+                    fileInput.multiple = true;
                     fileInput.style.display = 'none';
                     document.body.appendChild(fileInput);
                 }
@@ -996,10 +1099,12 @@ class BotCore:
                 if file_input:
                     file_input.input(abs_path)
                     self._random_delay(1, 2)
+                    self._log("INFO", f"已上传图片(JS): {os.path.basename(img_path)}")
                     return True
         except Exception:
             pass
 
+        self._log("WARN", f"上传图片失败: {os.path.basename(img_path)}")
         return False
 
     def _random_delay(self, min_sec: float, max_sec: float):
@@ -1088,7 +1193,8 @@ class BotCore:
     # ── 去重管理 ──
 
     def _chatted_db_path(self) -> str:
-        return "chatted_jobs.json"
+        web_app_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "web_app")
+        return os.path.join(web_app_dir, "chatted_jobs.json")
 
     def _load_chatted(self) -> set:
         try:

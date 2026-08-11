@@ -1,43 +1,47 @@
 {
+  "accounts": [
+    {
+      "cookie_file": "zhipin_cookies.json",
+      "enabled": true,
+      "image_files": [
+        "dashboard/40a4e949_看板1.png",
+        "dashboard/1559af1a_看板3.png",
+        "dashboard/eafcbbaa_看板2.png"
+      ],
+      "jobs": [
+        {
+          "city": "上海",
+          "enabled": true,
+          "greeting_message": "您好，我是双一流的本科，应聘数据分析岗位。在校系统学习数据分析相关知识，掌握Excel、基础SQL与数据整理技能，具备数据思维。做事严谨细心，学习能力强，愿意踏实积累。十分认可贵公司，希望能获得面试机会。",
+          "query": "数据分析",
+          "scroll_pages": 5
+        }
+      ],
+      "message_interval_max": 8,
+      "message_interval_min": 3,
+      "name": "主账号"
+    }
+  ],
   "browser": {
-    "headless": false,
-    "viewport_width": 1280,
-    "viewport_height": 800,
-    "page_load_timeout": 30,
     "custom_user_agent": "",
-    "proxy": ""
+    "headless": false,
+    "page_load_timeout": 30,
+    "proxy": "",
+    "viewport_height": 800,
+    "viewport_width": 1280
   },
   "login": {
-    "wait_timeout": 300,
-    "clear_cookies_on_failure": true
+    "clear_cookies_on_failure": true,
+    "wait_timeout": 300
   },
   "rate_limit": {
     "enabled": true,
-    "max_per_hour": 30,
-    "max_per_day": 100
+    "max_per_day": 100,
+    "max_per_hour": 30
   },
   "retry": {
-    "max_attempts": 3,
-    "base_delay": 2.0,
-    "backoff_factor": 2.0
-  },
-  "accounts": [
-    {
-      "name": "主账号",
-      "enabled": true,
-      "cookie_file": "zhipin_cookies.json",
-      "image_files": [],
-      "message_interval_min": 3,
-      "message_interval_max": 8,
-      "jobs": [
-        {
-          "enabled": true,
-          "city": "上海",
-          "query": "数据分析",
-          "scroll_pages": 5,
-          "greeting_message": "您好，我是双一流的本科，应聘数据分析岗位。在校系统学习数据分析相关知识，掌握Excel、基础SQL与数据整理技能，具备数据思维。做事严谨细心，学习能力强，愿意踏实积累。十分认可贵公司，希望能获得面试机会。"
-        }
-      ]
-    }
-  ]
+    "backoff_factor": 2,
+    "base_delay": 2,
+    "max_attempts": 3
+  }
 }

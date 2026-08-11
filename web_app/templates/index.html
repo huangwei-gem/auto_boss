@@ -291,6 +291,7 @@ a{color:var(--accent);text-decoration:none}
           <div class="file-input-wrap">
             <input class="side-form-input" id="accCookie" type="text" placeholder="zhipin_cookies.json" onchange="onAccChange()">
             <button class="file-btn" onclick="document.getElementById('cookieFileInput').click()">上传</button>
+            <button class="file-btn" style="background:var(--danger-bg);color:var(--danger)" onclick="deleteCookieFile()">删除</button>
             <input type="file" id="cookieFileInput" class="hidden" accept=".json,.txt" onchange="uploadCookieFile(event)">
           </div>
         </div>
@@ -1105,6 +1106,23 @@ function uploadCookieFile(input) {
         config.accounts[activeAccountIdx].cookie_file = 'zhipin_cookies.json';
         renderAccountConfig();
       } else {
+
+function deleteCookieFile() {
+  const filename = document.getElementById("accCookie").value || "zhipin_cookies.json";
+  if (!confirm("确定删除 Cookie 文件 \"" + filename + "\" 吗？")) return;
+  fetch("/api/cookies/delete", {
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({filename: filename})
+  }).then(r=>r.json()).then(data => {
+    if (data.status === "ok") {
+      addLog("INFO", "已删除 Cookie 文件: " + filename);
+    } else {
+      addLog("ERROR", "删除失败: " + (data.message||""));
+    }
+  }).catch(e => addLog("ERROR", "删除异常: " + e.message));
+}
+
         addLog('ERROR', 'Cookie 上传失败: ' + (data.message || ''));
       }
     })
