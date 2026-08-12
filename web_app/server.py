@@ -26,6 +26,13 @@ _scheduler_running = False
 _bot = None
 _config = None
 
+def _ensure_config():
+    """确保 _config 已初始化。"""
+    global _config
+    if _config is None:
+        _config = load_config()
+    return _config
+
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("boss-web")
 
@@ -230,6 +237,8 @@ def api_get_config():
 @app.route("/api/config", methods=["POST", "PUT"])
 def api_put_config():
     global _config
+    _ensure_config()
+    global _config
     try:
         data = request.get_json()
         if not data:
@@ -252,12 +261,17 @@ def api_put_config():
 def api_add_account():
     global _config
     try:
-        data = request.get_json() or {}
+        data = request.get_json(silent=True) or {}
         idx = len(_config["accounts"])
+        cookie_file = data.get("cookie_file", "zhipin_cookies.json")
+        # 验证 cookie 文件是否存在，如果不存在则使用默认值
+        cookie_path = os.path.join(BASE_DIR, cookie_file)
+        if not os.path.isfile(cookie_path):
+            cookie_file = "zhipin_cookies.json"
         _config["accounts"].append({
             "name": f"账号{idx + 1}",
             "enabled": True,
-            "cookie_file": data.get("cookie_file", "zhipin_cookies.json"),
+            "cookie_file": cookie_file,
             "image_files": [],
             "message_interval_min": 3,
             "message_interval_max": 8,
@@ -292,7 +306,7 @@ def api_delete_account(idx):
 def api_add_job(acc_idx):
     global _config
     try:
-        data = request.get_json() or {}
+        data = request.get_json(silent=True) or {}
         if 0 <= acc_idx < len(_config["accounts"]):
             _config["accounts"][acc_idx].setdefault("jobs", [])
             _config["accounts"][acc_idx]["jobs"].append({
@@ -370,6 +384,17 @@ def api_delete_image():
     """删除图片文件（支持单张删除、批量指定删除、全部删除）。"""
     data = request.get_json() or {}
     path = data.get("path", "")
+    # 兼容旧版：如果 path 是 dashboard/ 开头的，加上 web_app 目录
+    dashboard_dir = os.path.join(BASE_DIR, "dashboard")
+    if path and not os.path.isabs(path):
+        test_path = os.path.join(dashboard_dir, path)
+        if os.path.exists(test_path):
+            path = test_path
+        # 也尝试直接用 dashboard 目录下的文件名
+        elif "/" not in path and "\\" not in path:
+            test_path2 = os.path.join(dashboard_dir, path)
+            if os.path.exists(test_path2):
+                path = test_path2
     delete_all = data.get("delete_all", False)
     delete_paths = data.get("paths", [])
     dashboard_dir = os.path.join(BASE_DIR, "dashboard")
@@ -467,6 +492,46 @@ def api_scheduler_reset():
         _bot = None
         _scheduler_stop.clear()
     return jsonify({"status": "ok"})
+
+
+
+@app.route("/api/advanced", methods=["GET", "POST"])
+def api_advanced():
+    """获取或保存高级设置。"""
+    global _config
+    if request.method == "GET":
+        cfg = load_config()
+        return jsonify({
+            "status": "ok",
+            "browser": cfg.get("browser", {}),
+            "login": cfg.get("login", {}),
+            "rate_limit": cfg.get("rate_limit", {}),
+            "retry": cfg.get("retry", {}),
+            "message_interval_min": cfg.get("accounts", [{}])[0].get("message_interval_min", 3) if cfg.get("accounts") else 3,
+            "message_interval_max": cfg.get("accounts", [{}])[0].get("message_interval_max", 8) if cfg.get("accounts") else 8,
+        })
+    try:
+        data = request.get_json() or {}
+        cfg = load_config()
+        if "browser" in data:
+            cfg["browser"] = {**cfg.get("browser", {}), **data["browser"]}
+        if "login" in data:
+            cfg["login"] = {**cfg.get("login", {}), **data["login"]}
+        if "rate_limit" in data:
+            cfg["rate_limit"] = {**cfg.get("rate_limit", {}), **data["rate_limit"]}
+        if "retry" in data:
+            cfg["retry"] = {**cfg.get("retry", {}), **data["retry"]}
+        # 消息间隔保存到每个账号
+        for acc in cfg.get("accounts", []):
+            if "message_interval_min" in data:
+                acc["message_interval_min"] = int(data["message_interval_min"])
+            if "message_interval_max" in data:
+                acc["message_interval_max"] = int(data["message_interval_max"])
+        save_config(cfg)
+        _config = cfg
+        return jsonify({"status": "ok"})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 
 @app.route("/api/scheduler/status", methods=["GET"])
@@ -663,6 +728,12 @@ def on_check_login():
         emit("bot_login_status", {"logged_in": ok})
     else:
         emit("bot_login_status", {"logged_in": False})
+
+
+@socketio.on("stop_login_modal")
+def on_stop_login_modal():
+    """关闭登录弹窗。"""
+    emit("close_login_modal")
 
 
 

@@ -41,3 +41,5 @@ env/
 *.swo
 *~
 .DS_Store
+
+*.current_backup

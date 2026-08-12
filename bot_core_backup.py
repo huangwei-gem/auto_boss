@@ -1336,3 +1336,4 @@ class BotCore:
                 json.dump(logs[-500:], f, ensure_ascii=False, indent=2)
         except Exception:
             pass
+
