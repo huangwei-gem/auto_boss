@@ -43,3 +43,10 @@ env/
 .DS_Store
 
 *.current_backup
+
+# ── 敏感文件：包含 API Key / Cookie，禁止提交 ──
+web_app/bot_config.json
+web_app/zhipin_cookies.json
+web_app/ai_cache.json
+web_app/*_cookies.json
+web_app/*.cookie.json
