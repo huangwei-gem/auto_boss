@@ -9,7 +9,7 @@
   "ai": {
     "enabled": false,
     "api_key": "",
-    "api_base": "https://apihub.agnes-ai.com/v1",
+    "api_base": "https://api.agnes-ai.cn/v1",
     "model": "agnes-2.5-flash",
     "match_threshold": 70
   },
@@ -46,6 +46,8 @@ DEFAULT_CONFIG = {
         "page_load_timeout": 30,
         "custom_user_agent": "",
         "proxy": "",
+        "browser_path": "",
+        "user_data_path": "",
     },
     "login": {
         "wait_timeout": 300,
@@ -61,12 +63,20 @@ DEFAULT_CONFIG = {
         "base_delay": 2.0,
         "backoff_factor": 2.0,
     },
+    "human_verify": {
+        "enabled": True,
+        "wait_timeout": 180,
+    },
     "ai": {
         "enabled": False,
         "api_key": "",
-        "api_base": "https://apihub.agnes-ai.com/v1",
+        "api_base": "https://api.agnes-ai.cn/v1",
         "model": "agnes-2.5-flash",
         "match_threshold": 70,
+        "sort_by_score": True,
+        "prefer_active_hr": False,
+        "skip_inactive_hr": False,
+        "inactive_threshold_hours": 72,
     },
     "resume": {
         "school": "",
@@ -76,6 +86,15 @@ DEFAULT_CONFIG = {
         "experience": "",
         "target_position": "",
         "self_intro": "",
+    },
+    "monitor": {
+        "auto_reply": False,
+        "poll_interval_sec": 15,
+        "max_messages_per_cycle": 5,
+        "debug_capture": False,
+    },
+    "debug": {
+        "capture": False,
     },
     "accounts": [
         {
@@ -168,6 +187,8 @@ def load_config() -> dict:
     # 确保 AI 和 resume 字段存在
     merged.setdefault("ai", copy.deepcopy(DEFAULT_CONFIG["ai"]))
     merged.setdefault("resume", copy.deepcopy(DEFAULT_CONFIG["resume"]))
+    merged.setdefault("monitor", copy.deepcopy(DEFAULT_CONFIG["monitor"]))
+    merged.setdefault("debug", copy.deepcopy(DEFAULT_CONFIG["debug"]))
 
     return merged
 
@@ -239,7 +260,9 @@ def flatten_jobs_for_run(cfg: dict) -> list[dict]:
                 "login": cfg.get("login", {}),
                 "rate_limit": cfg.get("rate_limit", {}),
                 "retry": cfg.get("retry", {}),
+                "human_verify": cfg.get("human_verify", {}),
                 "ai": cfg.get("ai", {}),
                 "resume": cfg.get("resume", {}),
+                "debug": cfg.get("debug", {}),
             })
     return tasks

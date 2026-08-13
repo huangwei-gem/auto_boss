@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Boss直聘 · 智能投递助手</title>
-<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><defs><linearGradient id=%22g%22 x1=%220%%22 y1=%220%%22 x2=%22100%%22 y2=%22100%%22><stop offset=%220%%22 stop-color=%22%234a7cff%22/><stop offset=%22100%%22 stop-color=%22%231e4bd2%22/></linearGradient></defs><rect width=%22100%22 height=%22100%22 rx=%2220%22 fill=%22url(%23g)%22/><text x=%2250%22 y=%2265%22 text-anchor=%22middle%22 font-size=%2250%22 font-weight=%22bold%22 fill=%22%23fff%22 font-family=%22Arial%22>B</text></svg>">
+<title>boss智能投递助手</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><defs><linearGradient id=%22g%22 x1=%220%22 y1=%220%22 x2=%22100%22 y2=%22100%22><stop offset=%220%22 stop-color=%22%234a7cff%22/><stop offset=%22100%22 stop-color=%22%231e4bd2%22/></linearGradient></defs><rect width=%22100%22 height=%22100%22 rx=%2224%22 fill=%22url(%23g)%22/><g transform=%22translate(24,22) scale(1.35)%22 fill=%22none%22 stroke=%22%23fff%22 stroke-width=%222.4%22 stroke-linecap=%22round%22 stroke-linejoin=%22round%22><path d=%22M22 2 11 13%22/><path d=%22M22 2 15 22l-4-9-9-4Z%22/></g></svg>">
 <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -30,6 +30,15 @@
   --chip-bg:#e8eeff;--chip-text:#4a7cff;--chip-del:rgba(74,124,255,.3);
   --modal-overlay:rgba(0,0,0,.3);--scrollbar-thumb:#d0d2da;
   --img-checked-bd:#4a7cff;--img-checked-bg:rgba(74,124,255,.08);
+  /* 设计 tokens（原引用但缺失，补全：圆角/过渡/顶栏高度） */
+  --r-sm:10px;--r-md:16px;--r-lg:24px;--dur:.18s;--ease:cubic-bezier(.2,.8,.3,1);--header-h:52px;
+  /* 布局：侧栏可调宽度（分割条拖动 / 折叠按钮） */
+  --side-w:360px;
+  /* 玻璃拟态 tokens（浅色） */
+  --glass-bg:rgba(255,255,255,.62);--glass-bg-soft:rgba(255,255,255,.42);--glass-btn-bg:rgba(255,255,255,.55);
+  --glass-bd:rgba(255,255,255,.65);--glass-blur:blur(24px) saturate(1.6);
+  --glass-sh:0 8px 32px rgba(15,23,42,.08);--glass-inset:inset 0 1px 0 rgba(255,255,255,.55);
+  --hover-glass:rgba(15,23,42,.05);
 }
 
 [data-theme="dark"]{
@@ -47,6 +56,11 @@
   --chip-bg:#1e2a4a;--chip-text:#4a7cff;--chip-del:rgba(74,124,255,.3);
   --modal-overlay:rgba(0,0,0,.6);--scrollbar-thumb:#3b3f4a;
   --img-checked-bd:#4a7cff;--img-checked-bg:rgba(74,124,255,.12);
+  /* 玻璃拟态 tokens（深色） */
+  --glass-bg:rgba(23,26,36,.55);--glass-bg-soft:rgba(255,255,255,.05);--glass-btn-bg:rgba(255,255,255,.06);
+  --glass-bd:rgba(255,255,255,.09);--glass-blur:blur(24px) saturate(1.4);
+  --glass-sh:0 10px 40px rgba(0,0,0,.42);--glass-inset:inset 0 1px 0 rgba(255,255,255,.06);
+  --hover-glass:rgba(255,255,255,.08);
 }
 
 /* Theme transitions */
@@ -67,10 +81,10 @@ a{color:var(--accent);text-decoration:none}
 .hidden{display:none!important}
 
 /* Layout */
-.app{display:flex;width:100%;height:100%}
-.side{flex:0 0 360px;display:flex;flex-direction:column;background:var(--side-bg);color:var(--side-text);position:relative;z-index:10;border-right:1px solid var(--bd);overflow:hidden}
+.app{display:flex;width:100%;height:100%;position:relative}
+.side{flex:0 0 var(--side-w,360px);width:var(--side-w,360px);display:flex;flex-direction:column;background:var(--glass-bg);-webkit-backdrop-filter:var(--glass-blur);backdrop-filter:var(--glass-blur);color:var(--side-text);position:relative;z-index:10;border-right:1px solid var(--glass-bd);overflow:hidden;box-shadow:var(--glass-sh),var(--glass-inset);transition:flex-basis .28s var(--ease),width .28s var(--ease),border-color .28s var(--ease),transform .28s var(--ease)}
 .side-head{display:flex;align-items:center;gap:10px;padding:14px 18px;border-bottom:1px solid var(--side-input-bd);flex-shrink:0}
-.side-head .logo-wrap{width:32px;height:32px;border-radius:8px;background:linear-gradient(135deg,#4a7cff,#1e4bd2);display:flex;align-items:center;justify-content:center;color:#fff;font-size:18px;flex-shrink:0;box-shadow:0 2px 8px rgba(30,75,210,.4);transition:transform .2s ease}.side-head .logo-wrap:hover{transform:scale(1.1)}
+.side-head .logo-wrap{width:34px;height:34px;border-radius:10px;background:linear-gradient(135deg,#4a7cff,#1e4bd2);display:flex;align-items:center;justify-content:center;color:#fff;font-size:18px;flex-shrink:0;box-shadow:0 2px 8px rgba(30,75,210,.4),inset 0 1px 0 rgba(255,255,255,.35);transition:transform .2s ease}.side-head .logo-wrap:hover{transform:scale(1.08)}
 .side-head .logo-text{font-size:14px;font-weight:600;flex:1;letter-spacing:-.02em}
 .side-head .conn-badge{font-size:10px;padding:2px 8px;border-radius:10px;font-weight:500;background:var(--success-bg);color:var(--success)}
 .side-head .conn-badge.disconnected{background:var(--danger-bg);color:var(--danger)}
@@ -78,6 +92,27 @@ a{color:var(--accent);text-decoration:none}
 .side-section-title{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--side-label);margin-bottom:8px;padding:0 4px;display:flex;align-items:center;gap:6px}
 .side-section-title .badge-count{font-size:9px;padding:1px 6px;border-radius:8px;background:var(--side-input-bg);color:var(--fg-3rd);font-weight:600}
 .side-footer{flex-shrink:0;padding:10px 16px;border-top:1px solid var(--side-input-bd);display:flex;align-items:center;gap:8px;font-size:11px}
+
+/* Sidebar splitter (拖动调节两侧比例) */
+.splitter{flex:0 0 5px;cursor:col-resize;position:relative;z-index:8;background:transparent;touch-action:none;transition:background var(--dur) var(--ease)}
+.splitter::after{content:"";position:absolute;left:2px;top:0;bottom:0;width:1px;background:var(--glass-bd);transition:background var(--dur) var(--ease)}
+.splitter:hover,.splitter.dragging{background:rgba(74,124,255,.08)}
+.splitter:hover::after,.splitter.dragging::after{background:var(--accent)}
+body.resizing{cursor:col-resize;user-select:none;-webkit-user-select:none}
+body.resizing .app{pointer-events:none}
+body.resizing .splitter{pointer-events:auto}
+
+/* Sidebar toggle button (折叠按钮) */
+.sidebar-toggle{display:flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:8px;background:var(--glass-btn-bg);border:1px solid var(--glass-bd);color:var(--fg-2nd);flex-shrink:0;transition:all var(--dur) var(--ease);box-shadow:var(--glass-inset)}
+.sidebar-toggle:hover{background:var(--hover-glass);color:var(--fg)}
+.sidebar-toggle:active{transform:scale(.94)}
+
+/* 折叠态（桌面） */
+.app.side-collapsed .side{flex-basis:0;width:0;border-right-color:transparent}
+.app.side-collapsed .splitter{opacity:0;pointer-events:none}
+
+/* 窄屏遮罩 + 覆盖式侧栏 */
+.side-mask{position:fixed;inset:0;background:var(--modal-overlay);z-index:55;-webkit-backdrop-filter:blur(2px);backdrop-filter:blur(2px);opacity:0;pointer-events:none;transition:opacity .25s ease}
 
 
 /* Advanced settings collapsible */
@@ -118,30 +153,37 @@ a{color:var(--accent);text-decoration:none}
 /* Toggle switch */
 .toggle-switch{position:relative;display:inline-block;width:32px;height:18px;border-radius:9px;background:var(--bd-2);cursor:pointer;transition:all var(--dur) var(--ease);flex-shrink:0}
 .toggle-switch::after{content:"";position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:#fff;transition:all var(--dur) var(--ease);box-shadow:0 1px 2px rgba(0,0,0,.2)}
-.toggle-switch.on{background:var(--accent)}
-.toggle-switch.on::after{left:16px;background:#4a7cff}
+.toggle-switch.on{background:linear-gradient(180deg,#7eb2ff,#4a7cff);box-shadow:0 0 0 3px rgba(74,124,255,.14),0 1px 4px rgba(74,124,255,.4),inset 0 1px 0 rgba(255,255,255,.35)}
+.toggle-switch.on::after{left:16px;background:#fff}
 
 /* Buttons */
 .side-btn-row{display:flex;gap:6px;align-items:center}
 .side-btn{display:inline-flex;align-items:center;justify-content:center;gap:4px;padding:6px 12px;font-size:11px;font-weight:500;border-radius:4px;transition:all var(--dur) var(--ease);white-space:nowrap}
-.side-btn-ghost{background:var(--side-input-bg);color:var(--fg-2nd);border:1px solid var(--side-input-bd)}
-.side-btn-ghost:hover{background:var(--surface-hover);color:var(--fg)}
+.side-btn-ghost{background:var(--glass-btn-bg);color:var(--fg-2nd);border:1px solid var(--side-input-bd)}
+.side-btn-ghost:hover{background:var(--hover-glass);color:var(--fg)}
+.side-btn:active{transform:scale(.97)}
 .side-btn-sm{padding:4px 8px;font-size:10px}
 .side-btn-danger{color:var(--danger)!important}
 .side-btn-block{width:100%}
 
 /* Image multi-select grid */
-.image-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px;max-height:200px;overflow-y:auto;padding:2px}
-.image-grid-item{position:relative;border-radius:var(--r-sm);overflow:hidden;cursor:pointer;border:2px solid transparent;transition:all var(--dur) var(--ease);aspect-ratio:16/10}
-.image-grid-item img{width:100%;height:100%;object-fit:cover;display:block;border-radius:3px}
-.image-grid-item .check-overlay{position:absolute;top:4px;right:4px;width:18px;height:18px;border-radius:50%;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;color:#fff;font-size:11px;transition:all var(--dur) var(--ease);opacity:0}
+.image-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:3px;max-height:150px;overflow-y:auto;padding:1px}
+.image-grid-item{position:relative;border-radius:var(--r-sm);overflow:hidden;border:2px solid transparent;transition:all var(--dur) var(--ease);aspect-ratio:16/10;cursor:grab}
+.image-grid-item img{width:100%;height:100%;object-fit:cover;display:block;cursor:pointer}
+.image-grid-item.dragging{opacity:.5;transform:scale(.96);border-color:var(--accent)}
 .image-grid-item.checked{border-color:var(--img-checked-bd);background:var(--img-checked-bg)}
-.image-grid-item.checked .check-overlay{opacity:1;background:var(--accent)}
-.image-grid-item:hover .check-overlay{opacity:1}
-.image-grid-item .img-name{position:absolute;bottom:0;left:0;right:0;padding:3px 6px;font-size:8px;background:linear-gradient(transparent,rgba(0,0,0,.7));color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.image-grid-item .img-del-btn{position:absolute;top:2px;left:2px;width:18px;height:18px;border-radius:50%;background:rgba(220,38,38,.8);color:#fff;display:flex;align-items:center;justify-content:center;font-size:10px;cursor:pointer;opacity:0;transition:opacity .15s ease;z-index:2;line-height:1}
+.image-grid-item .img-select{position:absolute;top:2px;right:2px;width:14px;height:14px;border-radius:50%;background:rgba(15,23,42,.35);display:flex;align-items:center;justify-content:center;color:#fff;font-size:8px;cursor:pointer;transition:all var(--dur) var(--ease);z-index:2}
+.image-grid-item .img-select:hover{transform:scale(1.12)}
+.image-grid-item.checked .img-select{background:linear-gradient(180deg,#7eb2ff,#4a7cff);box-shadow:0 0 0 3px rgba(74,124,255,.18)}
+.image-grid-item .img-select .check-icon{opacity:0;transition:opacity var(--dur) var(--ease)}
+.image-grid-item.checked .img-select .check-icon{opacity:1}
+.image-grid-item .img-del-btn{position:absolute;top:2px;left:2px;width:12px;height:12px;border-radius:50%;background:rgba(220,38,38,.85);color:#fff;display:flex;align-items:center;justify-content:center;font-size:7px;cursor:pointer;opacity:0;transition:opacity .15s ease;z-index:3;line-height:1}
 .image-grid-item:hover .img-del-btn{opacity:1}
 .image-grid-item .img-del-btn:hover{background:#dc2626;transform:scale(1.15)}
+.image-grid-item .img-rename-btn{position:absolute;right:2px;bottom:11px;width:12px;height:12px;border-radius:50%;background:rgba(15,23,42,.55);color:#fff;display:flex;align-items:center;justify-content:center;font-size:7px;cursor:pointer;opacity:0;transition:opacity .15s ease;z-index:3;line-height:1}
+.image-grid-item:hover .img-rename-btn{opacity:1}
+.image-grid-item .img-rename-btn:hover{background:rgba(15,23,42,.8);transform:scale(1.15)}
+.image-grid-item .img-name{position:absolute;bottom:0;left:0;right:0;padding:1px 3px;font-size:6.5px;background:linear-gradient(transparent,rgba(0,0,0,.72));color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;pointer-events:none}
 
 /* Chips */
 .chip-list{display:flex;flex-wrap:wrap;gap:4px;margin-top:4px;min-height:22px}
@@ -149,11 +191,6 @@ a{color:var(--accent);text-decoration:none}
 .chip .chip-remove{cursor:pointer;font-size:12px;line-height:1;opacity:.6;transition:opacity var(--dur) var(--ease);margin-left:2px;color:var(--chip-del)}
 .chip .chip-remove:hover{opacity:1}
 
-/* Sidebar job list */
-.sbar-job-item{display:flex;align-items:center;justify-content:space-between;padding:6px 8px;border-radius:4px;background:var(--side-input-bg);border:1px solid var(--side-input-bd);cursor:pointer;transition:all var(--dur) var(--ease);margin-bottom:4px}
-.sbar-job-item:hover{background:var(--surface-hover)}
-.sbar-job-query{font-size:11px;font-weight:500;color:var(--fg)}
-.sbar-job-city{font-size:9px;color:var(--fg-3rd);padding:2px 6px;border-radius:3px;background:var(--side-input-bg)}
 .status-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
 .status-dot.idle{background:var(--fg-4th)}
 .status-dot.running{background:#34d399;animation:pulse 1.5s ease-in-out infinite}
@@ -162,8 +199,8 @@ a{color:var(--accent);text-decoration:none}
 .status-label{font-size:10px;color:var(--fg-4th);margin-left:auto;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:140px}
 
 /* Main area */
-.main{flex:1;display:flex;flex-direction:column;overflow:hidden;position:relative}
-.topbar{display:flex;align-items:center;padding:0 24px;height:var(--header-h);border-bottom:1px solid var(--bd);background:var(--surface);flex-shrink:0;gap:12px}
+.main{flex:1;display:flex;flex-direction:column;overflow:hidden;position:relative;z-index:1}
+.topbar{display:flex;align-items:center;padding:0 24px;height:var(--header-h);border-bottom:1px solid var(--glass-bd);background:var(--glass-bg);-webkit-backdrop-filter:var(--glass-blur);backdrop-filter:var(--glass-blur);flex-shrink:0;gap:12px;box-shadow:var(--glass-inset)}
 .topbar-title{font-size:15px;font-weight:600;letter-spacing:-.02em}
 .topbar-title .highlight{color:var(--accent)}
 .topbar-task{font-size:11px;color:var(--fg-3rd);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -171,37 +208,42 @@ a{color:var(--accent);text-decoration:none}
 .topbar-badge{font-size:9px;font-weight:600;padding:2px 8px;border-radius:4px;background:var(--accent-light);color:var(--accent);letter-spacing:.02em}
 
 /* Theme toggle button */
-.theme-toggle{display:flex;align-items:center;gap:5px;padding:5px 10px;border-radius:6px;background:var(--surface-soft);border:1px solid var(--bd);transition:all var(--dur) var(--ease);font-size:11px;font-weight:500;color:var(--fg-2nd)}
-.theme-toggle:hover{background:var(--surface-hover);color:var(--fg)}
+.theme-toggle{display:flex;align-items:center;gap:5px;padding:5px 10px;border-radius:8px;background:var(--glass-btn-bg);border:1px solid var(--bd);transition:all var(--dur) var(--ease);font-size:11px;font-weight:500;color:var(--fg-2nd);box-shadow:var(--glass-inset)}
+.theme-toggle:hover{background:var(--hover-glass);color:var(--fg)}
+.theme-toggle:active{transform:scale(.97)}
 .theme-toggle .toggle-icon{font-size:14px;line-height:1}
 
 /* Content */
 .content{flex:1;overflow-y:auto;padding:20px 24px;display:flex;flex-direction:column;gap:16px}
-.stats-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
-.stat-card{padding:16px 18px;border-radius:var(--r-md);background:var(--surface);border:1px solid var(--bd);box-shadow:var(--sh-sm);transition:all var(--dur) var(--ease)}
-.stat-card:hover{box-shadow:var(--sh);border-color:var(--bd-2)}
-.stat-card.accent{border-left:3px solid var(--accent)}
-.stat-card.success{border-left:3px solid var(--success)}
-.stat-card.warning{border-left:3px solid var(--warning)}
-.stat-card.info{border-left:3px solid var(--info)}
+.stats-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+.stat-card{padding:12px 14px;border-radius:var(--r-sm);background:var(--glass-bg);-webkit-backdrop-filter:var(--glass-blur);backdrop-filter:var(--glass-blur);border:1px solid var(--glass-bd);box-shadow:var(--glass-inset);transition:all var(--dur) var(--ease)}
+.stat-card:hover{background:var(--hover-glass);border-color:var(--bd-2)}
+.stat-card.accent .stat-label::before,.stat-card.success .stat-label::before,.stat-card.warning .stat-label::before,.stat-card.info .stat-label::before{content:"";display:inline-block;width:6px;height:6px;border-radius:50%;margin-right:5px;vertical-align:1px;background:currentColor;color:var(--fg-4th)}
+.stat-card.accent .stat-label::before{color:var(--accent)}
+.stat-card.success .stat-label::before{color:var(--success)}
+.stat-card.warning .stat-label::before{color:var(--warning)}
+.stat-card.info .stat-label::before{color:var(--info)}
 .stat-label{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--fg-3rd)}
-.stat-value{font-size:28px;font-weight:700;margin:4px 0;letter-spacing:-.03em;color:var(--fg)}
-.stat-sub{font-size:11px;color:var(--fg-3rd)}
+.stat-value{font-size:20px;font-weight:700;margin:2px 0;letter-spacing:-.03em;color:var(--fg)}
+.stat-sub{font-size:10.5px;color:var(--fg-4th)}
 
 /* Button variants */
-.btn{display:inline-flex;align-items:center;justify-content:center;gap:4px;padding:8px 16px;font-size:12px;font-weight:500;border-radius:var(--r-sm);transition:all var(--dur) var(--ease);white-space:nowrap}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:8px 16px;font-size:12px;font-weight:500;border-radius:var(--r-sm);transition:all var(--dur) var(--ease);white-space:nowrap}
+.btn:hover{transform:translateY(-1px)}
+.btn:active{transform:translateY(0) scale(.98)}
+.btn:disabled{opacity:.5;cursor:not-allowed;transform:none!important;box-shadow:none}
 .btn-sm{padding:5px 10px;font-size:11px}
-.btn-success{background:var(--success);color:#fff;box-shadow:0 1px 3px rgba(15,146,66,.2)}
-.btn-success:hover{opacity:.9;box-shadow:0 2px 8px rgba(15,146,66,.3)}
-.btn-danger{background:var(--danger);color:#fff;box-shadow:0 1px 3px rgba(220,38,38,.2)}
-.btn-danger:hover{opacity:.9}
-.btn-ghost{background:var(--surface-soft);color:var(--fg-2nd);border:1px solid var(--bd)}
-.btn-ghost:hover{background:var(--surface-hover);color:var(--fg)}
+.btn-success{background:var(--success);color:#fff;box-shadow:0 1px 2px rgba(16,185,129,.25),0 4px 12px rgba(16,185,129,.18)}
+.btn-success:hover{background:#059669;box-shadow:0 2px 4px rgba(16,185,129,.3),0 8px 20px rgba(16,185,129,.26)}
+.btn-danger{background:var(--danger);color:#fff;box-shadow:0 1px 2px rgba(239,68,68,.25),0 4px 12px rgba(239,68,68,.18)}
+.btn-danger:hover{background:#dc2626;box-shadow:0 2px 4px rgba(239,68,68,.3),0 8px 20px rgba(239,68,68,.26)}
+.btn-ghost{background:var(--glass-btn-bg);color:var(--fg-2nd);border:1px solid var(--bd);box-shadow:var(--glass-inset)}
+.btn-ghost:hover{background:var(--hover-glass);color:var(--fg);border-color:var(--bd-2)}
 
 /* Panels */
 .panel-row{display:flex;gap:16px;flex:1;min-height:0}
-.panel{display:flex;flex-direction:column;background:var(--surface);border:1px solid var(--bd);border-radius:var(--r-md);box-shadow:var(--sh-sm);overflow:hidden}
-.panel-half{flex:1}
+.panel{display:flex;flex-direction:column;background:var(--glass-bg);-webkit-backdrop-filter:var(--glass-blur);backdrop-filter:var(--glass-blur);border:1px solid var(--glass-bd);border-radius:var(--r-md);box-shadow:var(--glass-sh),var(--glass-inset);overflow:hidden}
+.panel-half{flex:1}.panel-full{flex:1;min-width:0}
 .panel-header{display:flex;align-items:center;padding:12px 16px;border-bottom:1px solid var(--bd);flex-shrink:0;gap:6px}
 .panel-icon{font-size:14px}
 .panel-title{font-size:12px;font-weight:600;color:var(--fg);letter-spacing:-.01em}
@@ -232,10 +274,20 @@ a{color:var(--accent);text-decoration:none}
 .log-SUCCESS{color:var(--success)}
 .log-ERROR{color:var(--danger)}
 .log-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px 20px;gap:8px;color:var(--fg-3rd)}
+.monitor-card{border:1px solid var(--bd);border-radius:var(--r-md);background:var(--side-input-bg);padding:10px 12px;margin-bottom:10px}
+.mcard-head{display:flex;align-items:center;gap:6px;margin-bottom:4px}
+.mcard-title{font-size:12px;font-weight:600;color:var(--fg)}
+.mcard-hr{font-size:11px;color:var(--fg-2nd);background:var(--bd);border-radius:6px;padding:4px 8px;margin-bottom:6px;word-break:break-all}
+.mcard-input{width:100%;min-height:52px;border:1px solid var(--bd);border-radius:6px;background:var(--surface);color:var(--fg);padding:6px 8px;font-size:12px;font-family:inherit;resize:vertical;box-sizing:border-box}
+.mcard-actions{display:flex;gap:6px;margin-top:6px;align-items:center}
+.mcard-state{font-size:11px;margin-left:auto}
+.mcard-state.ok{color:var(--success)}
+.mcard-state.err{color:var(--danger)}
+.mcard-state.skip{color:var(--fg-3rd)}
 
 /* Modal */
 .modal-overlay{position:fixed;inset:0;background:var(--modal-overlay);z-index:1000;display:flex;align-items:center;justify-content:center;animation:fadeIn .15s ease}
-.modal{background:var(--surface);border-radius:var(--r-lg);padding:24px;width:520px;max-width:90vw;max-height:80vh;overflow-y:auto;box-shadow:var(--sh-lg);border:1px solid var(--bd);animation:slideUp .2s ease}
+.modal{background:var(--glass-bg);-webkit-backdrop-filter:var(--glass-blur);backdrop-filter:var(--glass-blur);border-radius:var(--r-lg);padding:24px;width:520px;max-width:90vw;max-height:80vh;overflow-y:auto;box-shadow:var(--sh-lg),var(--glass-inset);border:1px solid var(--glass-bd);animation:slideUp .2s ease}
 .modal h3{font-size:15px;font-weight:600;margin-bottom:16px;color:var(--fg)}
 .modal-field{margin-bottom:12px}
 .modal-field label{display:block;font-size:11px;font-weight:500;color:var(--fg-2nd);margin-bottom:4px}
@@ -243,21 +295,35 @@ a{color:var(--accent);text-decoration:none}
 .modal-field input:focus,.modal-field textarea:focus,.modal-field select:focus{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-light)}
 .modal-field textarea{min-height:80px;resize:vertical}
 .modal-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:16px}
-.btn-primary{background:var(--accent);color:#fff;box-shadow:0 1px 3px rgba(30,75,210,.2)}
-.btn-primary:hover{background:var(--accent-hover);box-shadow:0 2px 8px rgba(30,75,210,.3)}
-.btn-cancel{background:var(--surface-soft);color:var(--fg-2nd);border:1px solid var(--bd)}
-.btn-cancel:hover{background:var(--surface-hover);color:var(--fg)}
+.btn-primary{background:linear-gradient(180deg,#5b8cff,var(--accent) 45%,#3a6ae8);color:#fff;box-shadow:0 1px 2px rgba(30,75,210,.25),0 4px 14px rgba(74,124,255,.22)}
+.btn-primary:hover{background:linear-gradient(180deg,#6b97ff,var(--accent-hover) 55%,#2f5bd6);box-shadow:0 2px 4px rgba(30,75,210,.3),0 8px 22px rgba(74,124,255,.32)}
+.btn-cancel{background:var(--glass-btn-bg);color:var(--fg-2nd);border:1px solid var(--bd)}
+.btn-cancel:hover{background:var(--hover-glass);color:var(--fg)}
 @keyframes fadeIn{from{opacity:0}to{opacity:1}}
 @keyframes slideUp{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
 
 /* Responsive */
-@media(max-width:900px){.stats-grid{grid-template-columns:repeat(2,1fr)}.panel-row{flex-direction:column}}
-@media(max-width:600px){.side{display:none}.stats-grid{grid-template-columns:1fr}.content{padding:12px}}
+@media(max-width:900px){
+  .stats-grid{grid-template-columns:repeat(2,1fr)}
+  .panel-row{flex-direction:column}
+  .content{padding:16px}
+  .splitter{display:none}
+  .side{flex-basis:0;width:0;border-right:none}
+  .app.side-overlay .side{flex-basis:auto;display:flex;position:fixed;top:0;left:0;bottom:0;width:min(var(--side-w,340px),86vw);z-index:60;border-right:1px solid var(--glass-bd);box-shadow:var(--glass-sh),var(--glass-inset)}
+  .app.side-overlay .side-mask{opacity:1;pointer-events:auto}
+  .app.side-overlay .splitter{display:none}
+}
+@media(max-width:600px){
+  .stats-grid{grid-template-columns:1fr}
+  .content{padding:12px}
+  .topbar{padding:0 12px}
+  .topbar-task{display:none}
+}
 
 /* Login Modal */
 .login-modal-overlay{position:fixed;inset:0;background:var(--modal-overlay);z-index:9999;display:none;align-items:center;justify-content:center;animation:fadeIn .25s ease;-webkit-backdrop-filter:blur(8px) saturate(140%);backdrop-filter:blur(8px) saturate(140%)}
 .login-modal-overlay.active{display:flex}
-.login-modal{position:relative;background:var(--surface);border-radius:18px;padding:0;max-width:440px;width:90%;box-shadow:0 24px 64px rgba(0,0,0,.28),0 0 0 1px var(--bd);border:1px solid var(--bd);animation:modalPop .28s cubic-bezier(.2,.9,.3,1.2);overflow:hidden}
+.login-modal{position:relative;background:var(--glass-bg);-webkit-backdrop-filter:var(--glass-blur);backdrop-filter:var(--glass-blur);border-radius:18px;padding:0;max-width:440px;width:90%;box-shadow:0 24px 64px rgba(0,0,0,.28),var(--glass-inset);border:1px solid var(--glass-bd);animation:modalPop .28s cubic-bezier(.2,.9,.3,1.2);overflow:hidden}
 .login-modal-header{background:linear-gradient(135deg,var(--accent),#1e4bd2);padding:28px 32px 24px;text-align:center;position:relative}
 .login-modal-header::after{content:"";position:absolute;bottom:-12px;left:0;right:0;height:24px;background:var(--surface);border-radius:18px 18px 0 0}
 .login-modal-icon{font-size:42px;line-height:1;margin-bottom:10px;display:inline-block;animation:iconBob 2.2s ease-in-out infinite;filter:drop-shadow(0 2px 8px rgba(0,0,0,.2))}
@@ -273,14 +339,51 @@ a{color:var(--accent);text-decoration:none}
 .login-modal-btn-secondary:hover{background:var(--surface-hover);color:var(--fg);box-shadow:0 2px 6px rgba(0,0,0,.06)}
 @keyframes modalPop{0%{transform:scale(.92) translateY(8px);opacity:0}60%{transform:scale(1.02)}100%{transform:scale(1) translateY(0);opacity:1}}
 @keyframes iconBob{0%,100%{transform:translateY(0)}50%{transform:translateY(-4px)}}
+
+/* Ambient background —— 玻璃拟态需要有东西可模糊 */
+.app::before{content:"";position:fixed;inset:0;z-index:0;pointer-events:none;background:
+  radial-gradient(620px 440px at 10% 6%,rgba(74,124,255,.16),transparent 62%),
+  radial-gradient(560px 420px at 94% 90%,rgba(52,211,153,.10),transparent 60%),
+  radial-gradient(460px 360px at 80% 8%,rgba(245,158,11,.08),transparent 58%)}
+
+/* 系统关闭透明/毛玻璃时，降级为实底（taste-skill） */
+@media (prefers-reduced-transparency: reduce){
+  .side,.topbar,.panel,.stat-card,.modal,.login-modal{-webkit-backdrop-filter:none;backdrop-filter:none}
+  :root{--glass-bg:#ffffff;--glass-bg-soft:#f5f6fa;--glass-btn-bg:#f0f1f5}
+  [data-theme="dark"]{--glass-bg:#1a1d27;--glass-bg-soft:#22252f;--glass-btn-bg:#22252f}
+}
+
+/* 按钮图标：CSS 伪元素实现，JS 里 textContent 重置不会丢失图标 */
+.btn[class*="ico-"]::before{content:"";width:12px;height:12px;display:inline-block;background-size:contain;background-repeat:no-repeat;background-position:center;flex-shrink:0}
+.ico-play::before{background-image:url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><path d='M8 5v14l11-7z' fill='currentColor'/></svg>")}
+.ico-stop::before{background-image:url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><rect x='6' y='6' width='12' height='12' rx='2' fill='currentColor'/></svg>")}
+.ico-check::before{background-image:url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'><polyline points='20 6 9 17 4 12'/></svg>")}
+.ico-save::before{background-image:url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4'/><polyline points='7 10 12 15 17 10'/><line x1='12' y1='15' x2='12' y2='3'/></svg>")}
+.ico-chart::before{background-image:url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round'><line x1='18' y1='20' x2='18' y2='10'/><line x1='12' y1='20' x2='12' y2='4'/><line x1='6' y1='20' x2='6' y2='14'/></svg>")}
+.ico-send::before{background-image:url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M22 2 11 13'/><path d='M22 2 15 22l-4-9-9-4Z'/></svg>")}
+.ico-skip::before{background-image:url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><polygon points='5 4 15 12 5 20 5 4' fill='currentColor'/><rect x='17' y='5' width='2' height='14' fill='currentColor'/></svg>")}
+.ico-zap::before{background-image:url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><polygon points='13 2 3 14 12 14 11 22 21 10 12 10 13 2' fill='currentColor'/></svg>")}
+.ico-file::before{background-image:url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z'/><polyline points='14 2 14 8 20 8'/></svg>")}
+.ico-refresh::before{background-image:url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><polyline points='23 4 23 10 17 10'/><path d='M20.49 15a9 9 0 1 1-2.12-9.36L23 10'/></svg>")}
+
+/* 城市组合框：点开显示全部，输入时过滤，也可直接手打 */
+.city-combo{position:relative}
+.city-combo input{width:100%;box-sizing:border-box}
+.city-combo-arrow{position:absolute;right:9px;top:50%;transform:translateY(-50%);font-size:10px;color:var(--fg-3rd);pointer-events:none}
+.city-combo-list{position:fixed;max-height:220px;overflow-y:auto;background:var(--surface-soft);border:1px solid var(--bd);border-radius:var(--r-sm);box-shadow:0 8px 24px rgba(0,0,0,.16);z-index:2000;display:none;text-align:left;padding:4px}
+.city-combo-list.show{display:block}
+.city-combo-item{padding:7px 10px;font-size:12px;color:var(--fg);cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-radius:6px}
+.city-combo-item:hover{background:var(--accent);color:#fff}
+.city-combo-item.muted{color:var(--fg-3rd);cursor:default}
+.city-combo-item.muted:hover{background:none;color:var(--fg-3rd)}
 </style>
 </head>
 <body>
 <div class="app">
   <div class="side">
     <div class="side-head">
-      <div class="logo-wrap"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="18" rx="2"/><path d="M12 8v8M8 12h8"/></svg></div>
-      <div class="logo-text">Boss直聘</div>
+      <div class="logo-wrap"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4Z"/></svg></div>
+      <div class="logo-text">boss智能投递助手</div>
       <span class="conn-badge" id="connStatus">已连接</span>
     </div>
     <div class="side-scroll" id="sideScroll">
@@ -297,12 +400,17 @@ a{color:var(--accent);text-decoration:none}
         <div class="acc-field-row"><label>Cookie</label>
           <div class="file-input-wrap">
             <input class="side-form-input" id="accCookie" type="text" placeholder="zhipin_cookies.json" onchange="onAccChange()">
-            <button class="file-btn" onclick="document.getElementById('cookieFileInput').click()" title="上传 Cookie 文件">📁</button>
+            <button class="file-btn" onclick="document.getElementById('cookieFileInput').click()" title="上传 Cookie 文件"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg></button>
+            <button class="file-btn" onclick="checkCookieLogin()" title="用当前 Cookie 打开浏览器验证登录状态；未登录则引导扫码登录">检查登录</button>
             <button class="file-btn" style="background:var(--danger-bg);color:var(--danger)" onclick="deleteCookieFile()">删除</button>
             <input type="file" id="cookieFileInput" class="hidden" accept=".json,.txt" onchange="uploadCookieFile(event)">
           </div>
         </div>
         <div class="acc-field-row" style="gap:6px"><label>启用</label><span id="accEnabled" class="toggle-switch on" onclick="toggleAccEnabled()"></span></div>
+
+        <div class="side-section-title" style="margin-top:14px">岗位管理 <span class="badge-count" id="sbarJobCount">0</span></div>
+        <div id="jobList" style="display:flex;flex-direction:column;min-height:40px"></div>
+        <button class="side-btn side-btn-ghost side-btn-sm side-btn-block" onclick="addJob()" style="margin-top:6px;padding:8px 12px;font-size:11px;font-weight:500;border:1px dashed var(--bd-2);background:var(--side-input-bg);border-radius:6px;cursor:pointer" onmouseover="this.style.borderColor='var(--accent)';this.style.color='var(--accent)'" onmouseout="this.style.borderColor='var(--bd-2)';this.style.color='var(--fg-2nd)'">+ 添加岗位</button>
 
         <div class="side-section-title" style="margin-top:12px">作品图片 <span class="badge-count" id="imageCountBadge">0</span></div>
         <div id="imageGrid" class="image-grid"></div>
@@ -315,24 +423,27 @@ a{color:var(--accent);text-decoration:none}
         </div>
       </div>
       <div>
-        <div class="side-section-title">🤖 AI 智能解析 <span class="badge-count" id="aiBadge">关</span></div>
+        <div class="side-section-title">AI 智能解析 <span class="badge-count" id="aiBadge">关</span></div>
         <div class="acc-field-row"><label>启用</label><span id="aiEnabled" class="toggle-switch" onclick="toggleAiEnabled()"></span></div>
         <div class="acc-field-row"><label>API Key</label><input class="side-form-input" id="aiApiKey" type="password" placeholder="sk-..." onchange="onAiChange()"></div>
-        <div class="acc-field-row"><label>API 地址</label><input class="side-form-input" id="aiApiBase" type="text" placeholder="https://apihub.agnes-ai.com/v1" onchange="onAiChange()"></div>
+        <div class="acc-field-row"><label>API 地址</label><input class="side-form-input" id="aiApiBase" type="text" placeholder="https://api.agnes-ai.cn/v1" onchange="onAiChange()"></div>
         <div class="acc-field-row"><label>模型</label><input class="side-form-input" id="aiModel" type="text" placeholder="agnes-2.5-flash" onchange="onAiChange()"></div>
         <div class="acc-field-row"><label>匹配阈值</label><input class="side-form-input" id="aiThreshold" type="number" min="0" max="100" placeholder="70" onchange="onAiChange()"></div>
+        <div class="acc-field-row"><label>按匹配度排序投递</label><span id="aiSort" class="toggle-switch" onclick="toggleAiBool('sort_by_score')"></span></div>
+        <div class="acc-field-row"><label>跳过不活跃 HR</label><span id="aiSkipInactive" class="toggle-switch" onclick="toggleAiBool('skip_inactive_hr')"></span></div>
+        <div class="acc-field-row"><label>不活跃阈值(时)</label><input class="side-form-input" id="aiInactiveHours" type="number" min="1" max="720" placeholder="72" onchange="onAiChange()"></div>
         <div class="side-btn-row" style="margin-top:6px;flex-wrap:wrap">
-          <button class="side-btn side-btn-ghost side-btn-sm" onclick="showResumeModal()">📄 编辑简历</button>
-          <button class="side-btn side-btn-ghost side-btn-sm" onclick="testAi()">⚡ 测试 AI</button>
+          <button class="side-btn side-btn-ghost side-btn-sm" onclick="showResumeModal()"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:2px"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg> 编辑简历</button>
+          <button class="side-btn side-btn-ghost side-btn-sm" onclick="testAi()"><svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" style="vertical-align:-2px;margin-right:2px"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg> 测试 AI</button>
         </div>
         <div id="aiStatus" style="font-size:10px;color:var(--fg-3rd);margin-top:4px;word-break:break-all"></div>
       </div>
       <div style="flex:1">
               <div>
         <button class="adv-toggle" id="advToggle" onclick="toggleAdvSection()">
-          ⚙️ 高级设置 <span class="arrow">▶</span>
-        </button>
-        <div class="adv-section" id="advSection">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg> 高级设置 <span class="arrow">▶</span>
+          </button>
+          <div class="adv-section" id="advSection">
           <div class="adv-group-title">浏览器</div>
           <div class="adv-field-row"><label>无头</label><span id="advHeadless" class="toggle-switch" onclick="toggleAdvBool('headless')"></span></div>
           <div class="adv-field-row"><label>宽度</label><input class="side-form-input" id="advViewportW" type="number" placeholder="1280" onchange="onAdvChange()"></div>
@@ -340,6 +451,10 @@ a{color:var(--accent);text-decoration:none}
           <div class="adv-field-row"><label>超时(s)</label><input class="side-form-input" id="advTimeout" type="number" placeholder="30" onchange="onAdvChange()"></div>
           <div class="adv-field-row"><label>UA</label><input class="side-form-input" id="advUserAgent" type="text" placeholder="留空自动" onchange="onAdvChange()"></div>
           <div class="adv-field-row"><label>代理</label><input class="side-form-input" id="advProxy" type="text" placeholder="http://..." onchange="onAdvChange()"></div>
+          <div class="adv-field-row"><label>浏览器路径</label><input class="side-form-input" id="advBrowserPath" type="text" placeholder="留空用默认 Chrome" onchange="onAdvChange()" title="指定 Chrome/特制浏览器可执行文件，留空用系统默认"></div>
+          <div class="adv-field-row"><label>用户数据目录</label><input class="side-form-input" id="advUserDataPath" type="text" placeholder="留空用临时目录" onchange="onAdvChange()" title="浏览器用户数据目录（登录态所在），如 ~/.zhipin_dp_data"></div>
+          <div class="adv-field-row"><label>抓取页面</label><span id="advDebugCapture" class="toggle-switch" onclick="toggleAdvBool('debug_capture')" title="调试：把搜索/详情/会话页 HTML 存到 web_app/debug/"></span></div>
+          <div class="adv-field-row" style="padding:0 2px"><span style="font-size:10px;color:var(--fg-4th)">调试抓取：存真实网页 HTML 到 web_app/debug/ 供校准</span></div>
           <div class="adv-group-title">频率限制</div>
           <div class="adv-field-row"><label>启用</label><span id="advRateLimit" class="toggle-switch" onclick="toggleAdvBool('rate_limit_enabled')"></span></div>
           <div class="adv-field-row"><label>每小时最多</label><input class="side-form-input" id="advRatePerHour" type="number" placeholder="30" onchange="onAdvChange()"></div>
@@ -351,15 +466,15 @@ a{color:var(--accent);text-decoration:none}
           <div class="adv-field-row"><label>最大次数</label><input class="side-form-input" id="advRetryAttempts" type="number" placeholder="3" onchange="onAdvChange()"></div>
           <div class="adv-field-row"><label>基础延迟(s)</label><input class="side-form-input" id="advRetryDelay" type="number" placeholder="2" step="0.1" onchange="onAdvChange()"></div>
           <div class="adv-field-row"><label>退避因子</label><input class="side-form-input" id="advRetryBackoff" type="number" placeholder="2" step="0.1" onchange="onAdvChange()"></div>
+          <div class="adv-group-title">风控验证</div>
+          <div class="adv-field-row"><label>启用</label><span id="advHumanVerify" class="toggle-switch" onclick="toggleAdvBool('human_verify_enabled')" title="投递/值守触发滑块或验证码时暂停，等人工处理完再继续"></span></div>
+          <div class="adv-field-row"><label>等待超时(s)</label><input class="side-form-input" id="advHvTimeout" type="number" placeholder="180" onchange="onAdvChange()" title="检测到验证弹层后等待人工完成的最长时间"></div>
           <div class="adv-group-title">消息间隔(秒)</div>
           <div class="adv-field-row"><label>最小间隔</label><input class="side-form-input" id="advMsgIntervalMin" type="number" value="3" min="1" max="60" step="1" onchange="onAdvChange()"></div>
           <div class="adv-field-row"><label>最大间隔</label><input class="side-form-input" id="advMsgIntervalMax" type="number" value="8" min="1" max="120" step="1" onchange="onAdvChange()"></div>
         </div>
       </div>
 
-        <div class="side-section-title">岗位列表 <span class="badge-count" id="sbarJobCount">0</span></div>
-        <div id="sbarJobs" style="display:flex;flex-direction:column;min-height:40px"></div>
-        <button class="side-btn side-btn-ghost side-btn-sm side-btn-block" onclick="addJob()" style="margin-top:6px;padding:8px 12px;font-size:11px;font-weight:500;border:1px dashed var(--bd-2);background:var(--side-input-bg);border-radius:6px;cursor:pointer" onmouseover="this.style.borderColor='var(--accent)';this.style.color='var(--accent)'" onmouseout="this.style.borderColor='var(--bd-2)';this.style.color='var(--fg-2nd)'">+ 添加岗位</button>
       </div>
     </div>
     <div class="side-footer">
@@ -368,9 +483,13 @@ a{color:var(--accent);text-decoration:none}
       <span class="status-label" id="currentTaskLabel"></span>
     </div>
   </div>
+  <div class="splitter" id="sideSplitter" title="拖动调节两侧比例"></div>
   <div class="main">
     <div class="topbar">
-      <div class="topbar-title"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-3px;margin-right:4px"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg><span class="highlight">AI</span> 自动投递</div>
+      <button class="sidebar-toggle" id="sidebarToggle" onclick="toggleSidebar()" title="收起 / 展开侧栏">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+      </button>
+      <div class="topbar-title"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-3px;margin-right:4px"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>智能投递控制台</div>
       <div class="topbar-task" id="topbarTask"></div>
       <div class="topbar-right">
         <span class="topbar-badge">v2.0</span>
@@ -387,25 +506,40 @@ a{color:var(--accent);text-decoration:none}
         <div class="stat-card warning"><div class="stat-label">已跳过</div><div class="stat-value" id="statSkipped">0</div><div class="stat-sub">已过滤</div></div>
         <div class="stat-card info"><div class="stat-label">操作</div>
           <div style="display:flex;gap:6px;margin-top:4px;flex-wrap:wrap">
-            <button class="btn btn-success btn-sm" id="btnStartAll" onclick="startAll()">▶ 启动</button>
-            <button class="btn btn-danger btn-sm" id="btnStopAll" onclick="stopAll()" style="display:none">■ 停止</button>
-            <button class="btn btn-ghost btn-sm" id="btnConfirmLogin" onclick="confirmLogin()" style="display:none">✓ 确认登录</button>
-            <button class="btn btn-ghost btn-sm" onclick="saveConfig()">💾 保存配置</button>
+            <button class="btn btn-success btn-sm ico-play" id="btnStartAll" onclick="startAll()">启动</button>
+            <button class="btn btn-danger btn-sm ico-stop" id="btnStopAll" onclick="stopAll()" style="display:none">停止</button>
+            <button class="btn btn-ghost btn-sm ico-check" id="btnConfirmLogin" onclick="confirmLogin()" style="display:none">确认登录</button>
+            <button class="btn btn-ghost btn-sm ico-save" onclick="saveConfig()">保存配置</button>
+            <button class="btn btn-ghost btn-sm ico-chart" onclick="showWeeklyReport()">投递周报</button>
           </div>
         </div>
       </div>
       <div class="panel-row">
         <div class="panel panel-half">
-          <div class="panel-header"><span class="panel-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg></span><span class="panel-title">岗位管理</span><div class="panel-actions"><button class="btn btn-ghost btn-sm" onclick="addJob()">+ 添加</button></div></div>
-          <div class="panel-body" id="jobList"></div>
-        </div>
-        <div class="panel panel-half">
           <div class="panel-header"><span class="panel-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg></span><span class="panel-title">运行日志</span><div class="panel-actions"><button class="btn btn-ghost btn-sm" onclick="clearLog()">清空</button></div></div>
           <div class="panel-body log-area" id="logArea"><div class="log-empty"><div class="empty-icon">📝</div><div>等待操作...</div></div></div>
+        </div>
+        <div class="panel panel-half">
+          <div class="panel-header">
+            <span class="panel-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg></span><span class="panel-title">AI 值守（HR 消息应答）</span>
+            <div class="panel-actions">
+              <button class="btn btn-success btn-sm ico-play" id="btnMonitorStart" onclick="monitorStart()">开始值守</button>
+              <button class="btn btn-danger btn-sm ico-stop" id="btnMonitorStop" onclick="monitorStop()" style="display:none">停止值守</button>
+            </div>
+          </div>
+          <div class="panel-body" style="display:flex;flex-direction:column;gap:8px">
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+              <select id="monitorAccount" style="font-size:11px;padding:4px 6px;border-radius:6px;border:1px solid var(--bd);background:var(--side-input-bg);color:var(--fg)"><option>主账号</option></select>
+              <label style="font-size:11px;color:var(--fg-2nd);display:inline-flex;align-items:center;gap:4px">自动回复<span id="monAutoReply" class="toggle-switch" onclick="toggleMonAuto()"></span></label>
+              <span class="monitor-status" id="monitorStatus" style="font-size:11px;color:var(--fg-3rd);margin-left:auto">未启动</span>
+            </div>
+            <div id="monitorQueue" style="flex:1;min-height:0;overflow-y:auto"><div class="log-empty"><div class="empty-icon">💬</div><div>尚未启动值守，或暂无 HR 新消息</div></div></div>
+          </div>
         </div>
       </div>
     </div>
   </div>
+  <div class="side-mask" id="sideMask" onclick="closeSidebar()"></div>
 </div>
 <script>
 const socket = io();
@@ -417,12 +551,15 @@ let availableImages = [];
 
 function renderAiConfig() {
   if (!config.ai) config.ai = {};
-  config.ai = Object.assign({enabled:false,api_key:'',api_base:'https://apihub.agnes-ai.com/v1',model:'agnes-2.5-flash',match_threshold:70}, config.ai);
+  config.ai = Object.assign({enabled:false,api_key:'',api_base:'https://api.agnes-ai.cn/v1',model:'agnes-2.5-flash',match_threshold:70,sort_by_score:true,prefer_active_hr:false,skip_inactive_hr:false,inactive_threshold_hours:72}, config.ai);
   setEl('aiEnabled', 'toggle-switch' + (config.ai.enabled ? ' on' : ''));
   setVal('aiApiKey', config.ai.api_key || '');
-  setVal('aiApiBase', config.ai.api_base || 'https://apihub.agnes-ai.com/v1');
+  setVal('aiApiBase', config.ai.api_base || 'https://api.agnes-ai.cn/v1');
   setVal('aiModel', config.ai.model || 'agnes-2.5-flash');
   setVal('aiThreshold', config.ai.match_threshold ?? 70);
+  setEl('aiSort', 'toggle-switch' + (config.ai.sort_by_score ? ' on' : ''));
+  setEl('aiSkipInactive', 'toggle-switch' + (config.ai.skip_inactive_hr ? ' on' : ''));
+  setVal('aiInactiveHours', config.ai.inactive_threshold_hours ?? 72);
   const badge = document.getElementById('aiBadge');
   if (badge) badge.textContent = config.ai.enabled ? '开' : '关';
 }
@@ -439,11 +576,28 @@ function onAiChange() {
   if (!config.ai) config.ai = {};
   config.ai.enabled = document.getElementById('aiEnabled').classList.contains('on');
   config.ai.api_key = document.getElementById('aiApiKey').value.trim();
-  config.ai.api_base = document.getElementById('aiApiBase').value.trim() || 'https://apihub.agnes-ai.com/v1';
+  config.ai.api_base = document.getElementById('aiApiBase').value.trim() || 'https://api.agnes-ai.cn/v1';
   config.ai.model = document.getElementById('aiModel').value.trim() || 'agnes-2.5-flash';
   config.ai.match_threshold = parseInt(document.getElementById('aiThreshold').value) || 70;
+  config.ai.sort_by_score = document.getElementById('aiSort').classList.contains('on');
+  config.ai.skip_inactive_hr = document.getElementById('aiSkipInactive').classList.contains('on');
+  config.ai.inactive_threshold_hours = parseInt(document.getElementById('aiInactiveHours').value) || 72;
   renderAiConfig();
   saveConfig();
+}
+
+function toggleAiBool(key) {
+  if (!config.ai) config.ai = {};
+  if (key === 'sort_by_score') {
+    config.ai.sort_by_score = !config.ai.sort_by_score;
+    setEl('aiSort', 'toggle-switch' + (config.ai.sort_by_score ? ' on' : ''));
+  } else if (key === 'skip_inactive_hr') {
+    config.ai.skip_inactive_hr = !config.ai.skip_inactive_hr;
+    setEl('aiSkipInactive', 'toggle-switch' + (config.ai.skip_inactive_hr ? ' on' : ''));
+  }
+  renderAiConfig();
+  saveConfig();
+  addLog('INFO', 'AI 投递策略已更新');
 }
 
 function testAi() {
@@ -508,6 +662,90 @@ function closeResumeModal() {
   if (m) m.remove();
 }
 
+function showWeeklyReport() {
+  if (document.getElementById('weeklyReportModal')) return;
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.id = 'weeklyReportModal';
+  overlay.innerHTML =
+    '<div class="modal" style="width:640px">'+
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">'+
+        '<h3 style="margin:0">📊 AI 投递周报</h3>'+
+        '<div style="display:flex;gap:8px;align-items:center">'+
+          '<select id="wrDays" onchange="refreshWeeklyReport()" style="padding:5px 8px;border-radius:var(--r-sm);border:1px solid var(--bd);background:var(--surface-soft);font-size:12px;color:var(--fg)">'+
+            '<option value="7">最近 7 天</option>'+
+            '<option value="14">最近 14 天</option>'+
+            '<option value="30">最近 30 天</option>'+
+          '</select>'+
+          '<button class="btn btn-ghost btn-sm" onclick="refreshWeeklyReport()">🔄 刷新</button>'+
+          '<button class="btn btn-cancel btn-sm" onclick="closeWeeklyReport()">关闭</button>'+
+        '</div>'+
+      '</div>'+
+      '<div id="wrStats" style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px"></div>'+
+      '<div style="font-size:11px;font-weight:500;color:var(--fg-2nd);margin-bottom:4px">跳过原因分布</div>'+
+      '<div id="wrReasons" style="font-size:12px;color:var(--fg-2nd)">加载中...</div>'+
+      '<div style="font-size:11px;font-weight:500;color:var(--fg-2nd);margin:14px 0 4px">AI 周报</div>'+
+      '<div id="wrSummary" style="white-space:pre-wrap;font-size:12px;line-height:1.7;color:var(--fg);background:var(--surface-soft);border-radius:var(--r-sm);padding:10px 12px">加载中...</div>'+
+    '</div>';
+  document.body.appendChild(overlay);
+  refreshWeeklyReport();
+}
+
+function closeWeeklyReport() {
+  const m = document.getElementById('weeklyReportModal');
+  if (m) m.remove();
+}
+
+function refreshWeeklyReport() {
+  const sel = document.getElementById('wrDays');
+  fetchWeeklyReport(sel ? sel.value : 7);
+}
+
+function fetchWeeklyReport(days) {
+  const summaryEl = document.getElementById('wrSummary');
+  const reasonsEl = document.getElementById('wrReasons');
+  const statsEl = document.getElementById('wrStats');
+  if (summaryEl) summaryEl.textContent = '加载中...';
+  fetch('/api/report/weekly?days=' + encodeURIComponent(days))
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (data.status !== 'ok') throw new Error(data.message || '加载失败');
+      const s = data.stats || {};
+      const cards = [
+        {label:'日志条目', value:s.total || 0, color:'var(--accent)'},
+        {label:'成功投递', value:s.applied || 0, color:'var(--success)'},
+        {label:'已跳过', value:s.skipped || 0, color:'var(--warning)'},
+        {label:'平均匹配分', value:(s.avg_score===null || s.avg_score===undefined) ? '—' : s.avg_score, color:'var(--info)'}
+      ];
+      if (statsEl) statsEl.innerHTML = cards.map(function(c) {
+        return '<div style="padding:10px 12px;border-radius:var(--r-sm);background:var(--surface-soft);border:1px solid var(--bd);border-left:3px solid '+c.color+'">'+
+                 '<div style="font-size:11px;color:var(--fg-2nd)">'+c.label+'</div>'+
+                 '<div style="font-size:18px;font-weight:600;color:var(--fg);margin-top:2px">'+c.value+'</div>'+
+               '</div>';
+      }).join('');
+      const reasons = s.skip_reasons || [];
+      if (reasonsEl) {
+        reasonsEl.textContent = reasons.length
+          ? reasons.map(function(r) { return r.reason + ' × ' + r.count; }).join('，')
+          : '无（所有条目均成功投递）';
+      }
+      if (summaryEl) {
+        if (data.summary) {
+          summaryEl.textContent = data.summary;
+        } else if (data.ai_available === false) {
+          summaryEl.textContent = '（AI 未配置 API Key，仅展示数据统计）';
+        } else {
+          summaryEl.textContent = '（AI 生成失败，请检查 AI 配置或稍后重试）';
+        }
+      }
+    })
+    .catch(function(e) {
+      if (statsEl) statsEl.innerHTML = '';
+      if (reasonsEl) reasonsEl.textContent = '加载失败';
+      if (summaryEl) summaryEl.textContent = '加载失败: ' + e.message;
+    });
+}
+
 function saveResumeModal() {
   if (!config.resume) config.resume = {};
   config.resume.school = document.getElementById('resumeSchool').value.trim();
@@ -555,7 +793,7 @@ function updateThemeUI(theme) {
   document.getElementById('themeIcon').innerHTML = isDark
     ? '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>'
     : '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>';
-  document.getElementById('themeLabel').textContent = isDark ? '☀️ 亮色' : '🌙 暗色';
+  document.getElementById('themeLabel').textContent = isDark ? '亮色' : '暗色';
 }
 
 function clearLog() {
@@ -571,14 +809,20 @@ function loadConfig() {
     if (!config.login) config.login = {};
     if (!config.rate_limit) config.rate_limit = {};
     if (!config.retry) config.retry = {};
-    config.browser = Object.assign({headless:false,viewport_width:1280,viewport_height:800,page_load_timeout:30,custom_user_agent:'',proxy:''}, config.browser);
+    config.browser = Object.assign({headless:false,viewport_width:1280,viewport_height:800,page_load_timeout:30,custom_user_agent:'',proxy:'',browser_path:'',user_data_path:''}, config.browser);
     config.login = Object.assign({wait_timeout:300,clear_cookies_on_failure:true}, config.login);
+    if (!config.human_verify) config.human_verify = {};
+    config.human_verify = Object.assign({enabled:true,wait_timeout:180}, config.human_verify);
     config.rate_limit = Object.assign({enabled:true,max_per_hour:30,max_per_day:100}, config.rate_limit);
     config.retry = Object.assign({max_attempts:3,base_delay:2,backoff_factor:2}, config.retry);
     if (!config.ai) config.ai = {};
-    config.ai = Object.assign({enabled:false,api_key:'',api_base:'https://apihub.agnes-ai.com/v1',model:'agnes-2.5-flash',match_threshold:70}, config.ai);
+    config.ai = Object.assign({enabled:false,api_key:'',api_base:'https://api.agnes-ai.cn/v1',model:'agnes-2.5-flash',match_threshold:70,sort_by_score:true,prefer_active_hr:false,skip_inactive_hr:false,inactive_threshold_hours:72}, config.ai);
     if (!config.resume) config.resume = {};
     config.resume = Object.assign({school:'',major:'',degree:'',skills:[],experience:'',target_position:'',self_intro:''}, config.resume);
+    if (!config.monitor) config.monitor = {};
+    config.monitor = Object.assign({auto_reply:false,poll_interval_sec:15,max_messages_per_cycle:5,debug_capture:false}, config.monitor);
+    if (!config.debug) config.debug = {};
+    config.debug = Object.assign({capture:false}, config.debug);
     if (!config.accounts || !config.accounts.length) {
       config.accounts = [{name:'主账号',enabled:true,cookie_file:'zhipin_cookies.json',image_files:[],message_interval_min:3,message_interval_max:8,jobs:[{enabled:true,city:'上海',query:'数据分析',scroll_pages:5,greeting_message:defaultGreeting}]}];
     }
@@ -601,6 +845,7 @@ function loadConfig() {
     renderAccountConfig();
     renderAdvSettings();
     renderAiConfig();
+    renderMonitorConfig();
     renderJobs();
     updateSbarJobs();
     refreshImageList();
@@ -626,6 +871,11 @@ function renderAccounts() {
     '<div class="account-tab'+(i===activeAccountIdx?' active':'')+'" onclick="switchAccount('+i+')">'+escHtml(a.name||'未命名')+'<span class="badge">'+(a.jobs||[]).length+'</span></div>'
   ).join('');
   if (badge) badge.textContent = config.accounts.length;
+  const sel = document.getElementById('monitorAccount');
+  if (sel) {
+    sel.innerHTML = config.accounts.map((a,i) => '<option value="'+i+'">'+escHtml(a.name||'未命名')+'</option>').join('');
+    sel.value = String(activeAccountIdx);
+  }
 }
 
 
@@ -643,6 +893,10 @@ function renderAdvSettings() {
   setPlh('advUserAgent', '留空自动');
   setVal('advProxy', b.proxy || '');
   setPlh('advProxy', 'http://...');
+  setVal('advBrowserPath', b.browser_path || '');
+  setPlh('advBrowserPath', '留空用默认 Chrome');
+  setVal('advUserDataPath', b.user_data_path || '');
+  setPlh('advUserDataPath', '留空用临时目录');
 
   const rl = config.rate_limit || {};
   setEl('advRateLimit', 'toggle-switch' + (rl.enabled !== false ? ' on' : ''));
@@ -657,6 +911,13 @@ function renderAdvSettings() {
   setVal('advRetryAttempts', rt.max_attempts ?? 3);
   setVal('advRetryDelay', rt.base_delay ?? 2);
   setVal('advRetryBackoff', rt.backoff_factor ?? 2);
+
+  const hv = config.human_verify || {};
+  setEl('advHumanVerify', 'toggle-switch' + (hv.enabled !== false ? ' on' : ''));
+  setVal('advHvTimeout', hv.wait_timeout ?? 180);
+
+  const dbg = config.debug || {};
+  setEl('advDebugCapture', 'toggle-switch' + (dbg.capture ? ' on' : ''));
 }
 
 function toggleAdvSection() {
@@ -679,6 +940,14 @@ function toggleAdvBool(key) {
     if (!config.login) config.login = {};
     config.login.clear_cookies_on_failure = !config.login.clear_cookies_on_failure;
     setEl('advClearCookies', 'toggle-switch' + (config.login.clear_cookies_on_failure !== false ? ' on' : ''));
+  } else if (key === "debug_capture") {
+    if (!config.debug) config.debug = {};
+    config.debug.capture = !config.debug.capture;
+    setEl('advDebugCapture', 'toggle-switch' + (config.debug.capture ? ' on' : ''));
+  } else if (key === "human_verify_enabled") {
+    if (!config.human_verify) config.human_verify = {};
+    config.human_verify.enabled = config.human_verify.enabled !== false ? false : true;
+    setEl('advHumanVerify', 'toggle-switch' + (config.human_verify.enabled ? ' on' : ''));
   }
   saveConfig();
 }
@@ -691,6 +960,11 @@ function onAdvChange() {
   config.browser.page_load_timeout = parseInt(document.getElementById('advTimeout').value) || 30;
   config.browser.custom_user_agent = document.getElementById('advUserAgent').value;
   config.browser.proxy = document.getElementById('advProxy').value;
+  config.browser.browser_path = document.getElementById('advBrowserPath').value;
+  config.browser.user_data_path = document.getElementById('advUserDataPath').value;
+
+  if (!config.debug) config.debug = {};
+  config.debug.capture = document.getElementById('advDebugCapture').classList.contains('on');
 
   if (!config.rate_limit) config.rate_limit = {};
   config.rate_limit.enabled = document.getElementById('advRateLimit').classList.contains('on');
@@ -705,6 +979,10 @@ function onAdvChange() {
   config.retry.max_attempts = parseInt(document.getElementById('advRetryAttempts').value) || 3;
   config.retry.base_delay = parseFloat(document.getElementById('advRetryDelay').value) || 2.0;
   config.retry.backoff_factor = parseFloat(document.getElementById('advRetryBackoff').value) || 2.0;
+
+  if (!config.human_verify) config.human_verify = {};
+  config.human_verify.enabled = document.getElementById('advHumanVerify').classList.contains('on');
+  config.human_verify.wait_timeout = parseInt(document.getElementById('advHvTimeout').value) || 180;
 
   // Message interval from advanced settings
   var _acc = config.accounts[activeAccountIdx];
@@ -754,15 +1032,8 @@ function renderJobs() {
 
 function updateSbarJobs() {
   const a = config.accounts[activeAccountIdx];
-  const el = document.getElementById('sbarJobs');
   const badge = document.getElementById('sbarJobCount');
-  if (a && a.jobs && a.jobs.length) {
-    if (badge) badge.textContent = a.jobs.length;
-    el.innerHTML = a.jobs.map((j,i) => '<div class="sbar-job-item" onclick="editJob('+i+')"><span class="sbar-job-query">'+escHtml(j.query||'')+'</span><span class="sbar-job-city">'+escHtml(j.city||'')+'</span></div>').join('');
-  } else {
-    if (badge) badge.textContent = '0';
-    el.innerHTML = '<span style="color:var(--fg-3rd);font-size:10px;padding:8px 0;display:block;text-align:center">暂无岗位，点击上方添加</span>';
-  }
+  if (badge) badge.textContent = (a && a.jobs) ? a.jobs.length : 0;
 }
 
 function renderImageGrid() {
@@ -771,20 +1042,92 @@ function renderImageGrid() {
   if (!a) return;
   const selected = a.image_files || [];
   if (!availableImages.length) {
-    grid.innerHTML = "<div class="empty-state"><div class="empty-icon">🖼</div><div class="empty-title">暂无作品图片</div><div class="empty-desc">点击「上传图片」选择图片后自动发送给 HR</div></div>";
+    grid.innerHTML = '<div class="empty-state"><div class="empty-title">暂无作品图片</div><div class="empty-desc">点击「上传图片」选择图片后自动发送给 HR</div></div>';
     return;
   }
   grid.innerHTML = availableImages.map(f => {
-    const name = f.replace(/^dashboard[\\/]/, "").replace(/^dashboard\\//, "");
+    const name = f.replace(/^dashboard[\\/]+/, "");
     const enc = encodeURIComponent(f);
-    const sel = selected.includes(f) ? " selected" : "";
-    return "<div class="img-item" + sel + "" onclick="toggleImage(\"" + enc + "\")">" +
-      "<div class="img-del-btn" onclick="event.stopPropagation();deleteImageFile(\"" + enc + "\")" title="删除此图片">✖</div>" +
-      "<img src=\"/" + f + "\" alt=\"" + enc + "\" loading=\"lazy\" onerror=\"this.style.display=\"none\"\">" +
-      "<div class="check-overlay">✓</div>" +
-      "<div class="img-name">" + escHtml(name) + "</div>" +
-      "</div>";
+    const sel = selected.includes(f) ? " checked" : "";
+    return '<div class="image-grid-item' + sel + '" draggable="true" ondragstart="imageDragStart(event)" ondragover="imageDragOver(event)" ondrop="imageDrop(event)" ondragend="imageDragEnd(event)">' +
+      '<div class="img-select" draggable="false" onclick="event.stopPropagation();toggleImage(\'' + enc + '\')" title="选择/取消发送"><span class="check-icon">✓</span></div>' +
+      '<div class="img-del-btn" draggable="false" onclick="event.stopPropagation();deleteImageFile(\'' + enc + '\')" title="删除此图片">✖</div>' +
+      '<div class="img-rename-btn" draggable="false" onclick="event.stopPropagation();renameImage(\'' + enc + '\')" title="重命名">✎</div>' +
+      '<img src="/' + f + '" alt="' + enc + '" loading="lazy" onclick="previewImage(\'' + enc + '\')" onerror="this.style.display=\'none\'">' +
+      '<div class="img-name">' + escHtml(name) + '</div>' +
+      '</div>';
   }).join("");
+}
+let dragImageIdx = -1;
+function imageDragStart(e) {
+  const item = e.target.closest('.image-grid-item');
+  if (!item) return;
+  dragImageIdx = Array.prototype.indexOf.call(item.parentNode.children, item);
+  item.classList.add('dragging');
+  try { e.dataTransfer.setData('text/plain', String(dragImageIdx)); e.dataTransfer.effectAllowed = 'move'; } catch (err) {}
+}
+function imageDragOver(e) {
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'move';
+}
+function imageDrop(e) {
+  e.preventDefault();
+  const target = e.target.closest('.image-grid-item');
+  if (!target || dragImageIdx < 0) return;
+  const to = Array.prototype.indexOf.call(target.parentNode.children, target);
+  if (dragImageIdx === to) return;
+  const moved = availableImages.splice(dragImageIdx, 1)[0];
+  availableImages.splice(to, 0, moved);
+  config.accounts.forEach(function(acc) {
+    if (!acc.image_files) return;
+    acc.image_files.sort(function(x, y) { return availableImages.indexOf(x) - availableImages.indexOf(y); });
+  });
+  renderImageGrid();
+  renderImageChips();
+  saveConfig();
+  addLog('INFO', '已调整图片顺序');
+}
+function imageDragEnd(e) {
+  const item = e.target.closest('.image-grid-item');
+  if (item) item.classList.remove('dragging');
+  dragImageIdx = -1;
+}
+function previewImage(name) {
+  name = decodeURIComponent(name);
+  const overlay = document.getElementById('imagePreview');
+  const img = document.getElementById('imagePreviewImg');
+  const cap = document.getElementById('imagePreviewName');
+  if (!overlay || !img) return;
+  img.src = '/' + name;
+  if (cap) cap.textContent = name.replace(/^dashboard[\\/]+/, "");
+  overlay.style.display = 'flex';
+}
+function closeImagePreview() {
+  const overlay = document.getElementById('imagePreview');
+  if (overlay) overlay.style.display = 'none';
+}
+function renameImage(name) {
+  name = decodeURIComponent(name);
+  const clean = name.replace(/^dashboard[\\/]+/, "");
+  const dot = clean.lastIndexOf('.');
+  const base = dot > 0 ? clean.slice(0, dot) : clean;
+  const ext = dot > 0 ? clean.slice(dot) : '';
+  const newBase = prompt('输入新的文件名（不含扩展名）:', base);
+  if (!newBase) return;
+  const newName = newBase.trim().replace(/[\\/:*?"<>|]/g, '_') + ext;
+  if (!newName || newName === clean) return;
+  fetch('/api/images/rename', {
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({path: clean, new_name: newName})
+  }).then(r=>r.json()).then(data => {
+    if (data.status === 'ok') {
+      addLog('INFO', '已重命名: ' + clean + ' → ' + data.name);
+      loadConfig();
+    } else {
+      addLog('ERROR', '重命名失败: ' + (data.message||''));
+    }
+  }).catch(e => addLog('ERROR', '重命名异常: ' + e.message));
 }
 function toggleImage(name) {
   name = decodeURIComponent(name);
@@ -821,9 +1164,9 @@ function removeImageChip(name) {
     return;
   }
   el.innerHTML = a.image_files.map(f => {
-    const name = f.replace(/^dashboard[\\/]/, "").replace(/^dashboard\\//, "");
+    const name = f.replace(/^dashboard[\\/]+/, "");
     const enc = encodeURIComponent(f);
-    return "<span class="chip">" + escHtml(name) + "<span class="chip-del" onclick="event.stopPropagation();removeImageChip(\"" + enc + "\")">✕</span></span>";
+    return '<span class="chip">' + escHtml(name) + '<span class="chip-del" onclick="event.stopPropagation();removeImageChip(\'' + enc + '\')">✕</span></span>';
   }).join("");
   updateImageCountBadge();
 }
@@ -842,7 +1185,7 @@ function deleteImageFile(name) {
   name = decodeURIComponent(name);
   if (!confirm("确定删除图片文件吗？这将从服务器上彻底删除此图片。")) return;
   // 提取纯文件名
-  const cleanName = name.replace(/^dashboard[\\/]/, "").replace(/^dashboard\\//, "");
+  const cleanName = name.replace(/^dashboard[\\/]+/, "");
   fetch("/api/images/delete", {
     method:"POST",
     headers:{"Content-Type":"application/json"},
@@ -850,10 +1193,12 @@ function deleteImageFile(name) {
   }).then(r=>r.json()).then(data => {
     if (data.status === "ok") {
       addLog("INFO", "已删除图片文件: " + cleanName);
+      const ai = availableImages.indexOf(name);
+      if (ai >= 0) availableImages.splice(ai, 1);
       const a = config.accounts[activeAccountIdx];
       if (a && a.image_files) {
         a.image_files = a.image_files.filter(f => {
-          const fName = f.replace(/^dashboard[\\/]/, "").replace(/^dashboard\\//, "");
+          const fName = f.replace(/^dashboard[\\/]+/, "");
           return fName !== cleanName;
         });
       }
@@ -980,6 +1325,62 @@ function refreshImageList() {
     .catch(()=>{});
 }
 
+let cityListAll = [];
+function loadCities() {
+  fetch('/api/cities').then(r=>r.json()).then(data => {
+    if (!data || data.status !== 'ok') return;
+    cityListAll = data.cities || [];
+  }).catch(()=>{});
+}
+function showCityCombo() {
+  const l = document.getElementById('cityComboList');
+  if (!l) return;
+  renderCityCombo('', l);
+  positionCityCombo();
+  l.classList.add('show');
+}
+function toggleCityCombo() {
+  const l = document.getElementById('cityComboList');
+  if (!l) return;
+  if (l.classList.contains('show')) l.classList.remove('show');
+  else showCityCombo();
+}
+function hideCityComboLater() {
+  setTimeout(function(){ const l = document.getElementById('cityComboList'); if (l) l.classList.remove('show'); }, 150);
+}
+function filterCityCombo() {
+  const l = document.getElementById('cityComboList');
+  if (!l || !l.classList.contains('show')) return;
+  renderCityCombo(document.getElementById('modalCity').value, l);
+  positionCityCombo();
+}
+function positionCityCombo() {
+  const input = document.getElementById('modalCity');
+  const l = document.getElementById('cityComboList');
+  if (!input || !l) return;
+  const r = input.getBoundingClientRect();
+  const listH = Math.min(220, cityListAll.length * 30 + 12);
+  let top = r.bottom + 4;
+  if (top + listH > window.innerHeight - 8) top = Math.max(8, r.top - listH - 4);
+  l.style.left = r.left + 'px';
+  l.style.top = top + 'px';
+  l.style.width = r.width + 'px';
+}
+function renderCityCombo(q, l) {
+  const kw = (q||'').trim();
+  const items = cityListAll.filter(c => !kw || c.includes(kw));
+  l.innerHTML = items.length
+    ? items.map(c => '<div class="city-combo-item" onmousedown="pickCity(\''+escJs(c)+'\',event)">'+escHtml(c)+'</div>').join('')
+    : '<div class="city-combo-item muted">无匹配城市，可手动输入</div>';
+}
+function pickCity(name, ev) {
+  if (ev) ev.preventDefault();
+  const input = document.getElementById('modalCity');
+  if (input) input.value = decodeURIComponent(name);
+  const l = document.getElementById('cityComboList');
+  if (l) l.classList.remove('show');
+}
+
 
 
 function switchAccount(i) { activeAccountIdx = i; renderAccounts(); renderAccountConfig(); renderJobs(); updateSbarJobs(); }
@@ -1035,7 +1436,7 @@ function showJobModal(job) {
   overlay.innerHTML =
     '<div class="modal">'+
       '<h3>'+(editingJobIdx>=0?'编辑岗位':'添加岗位')+'</h3>'+
-      '<div class="modal-field"><label>城市</label><input id="modalCity" value="'+escHtml(job.city||'')+'" placeholder="例如: 上海"></div>'+
+      '<div class="modal-field"><label>城市</label><div class="city-combo"><input id="modalCity" value="'+escHtml(job.city||'')+'" placeholder="从下拉选择或直接输入" autocomplete="off" onfocus="showCityCombo()" oninput="filterCityCombo()" onblur="hideCityComboLater()"><span class="city-combo-arrow">▾</span></div></div>'+
       '<div class="modal-field"><label>搜索关键词</label><input id="modalQuery" value="'+escHtml(job.query||'')+'" placeholder="例如: AI产品经理"></div>'+
       '<div class="modal-field"><label>翻页数</label><input id="modalPages" type="number" value="'+(job.scroll_pages||5)+'" min="1" max="20"></div>'+
       '<div class="modal-field"><label>打招呼消息</label><textarea id="modalGreeting" placeholder="输入自定义打招呼消息" style="min-height:80px">'+escHtml(job.greeting_message||defaultGreeting)+'</textarea></div>'+
@@ -1045,6 +1446,7 @@ function showJobModal(job) {
       '</div>'+
     '</div>';
   document.body.appendChild(overlay);
+  loadCities();
 }
 
 function closeJobModal() {
@@ -1125,7 +1527,7 @@ function deleteAccount(i) {
 
 function startAll() {
   const btn = document.getElementById('btnStartAll');
-  if (btn) { btn.disabled = true; btn.textContent = '⏳ 启动中...'; }
+  if (btn) { btn.disabled = true; btn.textContent = '启动中...'; }
   // 先保存配置
   saveConfig()
     .then(() => {
@@ -1144,13 +1546,13 @@ function startAll() {
           addLog('SYSTEM','正在启动所有任务...');
         } else {
           addLog('ERROR', 'WebSocket 未连接，请刷新页面重试');
-          if (btn) { btn.disabled = false; btn.textContent = '▶ 启动'; btn.style.display = ''; }
+          if (btn) { btn.disabled = false; btn.textContent = '启动'; btn.style.display = ''; }
         }
       }, 500);
     })
     .catch(e => {
       addLog('ERROR', '启动失败: ' + e.message);
-      if (btn) { btn.disabled = false; btn.textContent = '▶ 启动'; btn.style.display = ''; }
+      if (btn) { btn.disabled = false; btn.textContent = '启动'; btn.style.display = ''; }
     });
 }
 
@@ -1158,7 +1560,7 @@ function stopAll() {
   socket.emit('stop_all');
   addLog('SYSTEM','正在停止所有任务...');
   const btn = document.getElementById('btnStartAll');
-  if (btn) { btn.disabled = false; btn.textContent = '▶ 启动'; btn.style.display = ''; }
+  if (btn) { btn.disabled = false; btn.textContent = '启动'; btn.style.display = ''; }
   const stopBtn = document.getElementById('btnStopAll');
   if (stopBtn) { stopBtn.style.display = 'none'; }
   // 也重置状态点
@@ -1170,7 +1572,8 @@ function stopAll() {
 
 function confirmLogin() { socket.emit('confirm_login'); }
 function doConfirmLogin() {
-  document.getElementById('loginModal').classList.remove('active');
+  const modal = document.getElementById('loginModal');
+  if (modal) { modal.style.display = 'none'; modal.classList.remove('active'); }
   socket.emit('confirm_login');
   addLog('SYSTEM', '已确认登录，继续执行...');
 }
@@ -1179,7 +1582,7 @@ function checkLogin() { socket.emit('check_login'); }
 
 function setControls(running) {
   const s=document.getElementById('btnStartAll'),p=document.getElementById('btnStopAll'),cl=document.getElementById('btnConfirmLogin'),dot=document.getElementById('sbarDot'),st=document.getElementById('sbarStatus');
-  if(s) { s.style.display=running?'none':''; s.disabled=false; s.textContent='▶ 启动'; }
+  if(s) { s.style.display=running?'none':''; s.disabled=false; s.textContent='启动'; }
   if(p) { p.style.display=running?'':'none'; }
   if(cl) { cl.style.display=running?'':'none'; }
   if(dot) dot.className='status-dot'+(running?' running':' idle');
@@ -1219,6 +1622,94 @@ function resetScheduler() {
     .catch(()=>{});
 }
 
+// ── AI 值守 ──
+let monitorRunning = false;
+
+function renderMonitorConfig() {
+  if (!config.monitor) config.monitor = {};
+  config.monitor = Object.assign({auto_reply:false,poll_interval_sec:15,max_messages_per_cycle:5,debug_capture:false}, config.monitor);
+  setEl('monAutoReply', 'toggle-switch' + (config.monitor.auto_reply ? ' on' : ''));
+}
+
+function toggleMonAuto() {
+  if (!config.monitor) config.monitor = {};
+  config.monitor.auto_reply = !config.monitor.auto_reply;
+  setEl('monAutoReply', 'toggle-switch' + (config.monitor.auto_reply ? ' on' : ''));
+  saveConfig();
+  addLog('INFO', '值守自动回复已' + (config.monitor.auto_reply ? '开启' : '关闭'));
+}
+
+function setMonitorControls(running) {
+  monitorRunning = running;
+  const start=document.getElementById('btnMonitorStart'), stop=document.getElementById('btnMonitorStop'), status=document.getElementById('monitorStatus');
+  if(start) start.style.display=running?'none':'';
+  if(stop) stop.style.display=running?'':'none';
+  if(status) status.textContent=running?'🟢 值守中':'未启动';
+}
+
+function monitorStart() {
+  const sel = document.getElementById('monitorAccount');
+  const account_idx = sel ? (parseInt(sel.value)||0) : 0;
+  socket.emit('monitor_start', {account_idx: account_idx});
+  setMonitorControls(true);
+  const q=document.getElementById('monitorQueue');
+  if(q) q.innerHTML='<div class="log-empty"><div class="empty-icon">⏳</div><div>正在启动值守，请稍候...</div></div>';
+  addLog('INFO', '正在启动 AI 值守（账号 #'+account_idx+'）...');
+}
+
+function monitorStop() {
+  socket.emit('monitor_stop');
+  addLog('INFO', '已请求停止 AI 值守');
+}
+
+function monitorSend(eventId, textareaId) {
+  const el=document.getElementById(textareaId);
+  const reply_text = el ? el.value.trim() : '';
+  if(!reply_text) { addLog('WARN', '回复内容为空，未发送'); return; }
+  socket.emit('send_monitor_reply', {event_id:eventId, reply_text:reply_text});
+  const card=document.getElementById('mcard_'+eventId);
+  if(card) card.style.opacity='0.55';
+}
+
+function monitorSkip(eventId) {
+  socket.emit('skip_monitor_reply', {event_id:eventId});
+  const card=document.getElementById('mcard_'+eventId);
+  if(card) card.style.opacity='0.4';
+}
+
+function renderMonitorReplyCard(data) {
+  const q=document.getElementById('monitorQueue');
+  if(!q) return;
+  const empty=q.querySelector('.log-empty');
+  if(empty) empty.remove();
+  const id='mcard_'+data.event_id;
+  if(document.getElementById(id)) return;
+  const card=document.createElement('div');
+  card.id=id;
+  card.className='monitor-card';
+  card.innerHTML =
+    '<div class="mcard-head"><span class="mcard-title">'+escHtml(data.job_name||'未知岗位')+(data.company?' @ '+escHtml(data.company):'')+'</span></div>'+
+    '<div class="mcard-hr">HR：'+escHtml(data.hr_message||'')+'</div>'+
+    '<textarea class="mcard-input" id="minput_'+data.event_id+'" rows="2">'+escHtml(data.suggested_reply||'')+'</textarea>'+
+    '<div class="mcard-actions">'+
+      '<button class="btn btn-success btn-sm ico-send" onclick="monitorSend(\''+data.event_id+'\',\'minput_'+data.event_id+'\')">发送</button>'+
+      '<button class="btn btn-ghost btn-sm ico-skip" onclick="monitorSkip(\''+data.event_id+'\')">跳过</button>'+
+      '<span class="mcard-state" id="mstate_'+data.event_id+'"></span>'+
+    '</div>';
+  q.insertBefore(card, q.firstChild);
+}
+
+function finalizeMonitorReply(data) {
+  const card=document.getElementById('mcard_'+data.event_id);
+  if(!card) return;
+  const state=document.getElementById('mstate_'+data.event_id);
+  if(state){
+    if(data.skipped){ state.textContent='已跳过'; state.className='mcard-state skip'; }
+    else if(data.ok){ state.textContent='✅ 已发送'; state.className='mcard-state ok'; card.style.opacity='0.7'; }
+    else { state.textContent='❌ '+(data.err||'发送失败'); state.className='mcard-state err'; card.style.opacity='1'; }
+  }
+}
+
 socket.on('connect',()=>{addLog('SYSTEM','WebSocket 已连接');document.getElementById('connStatus').textContent='已连接';resetScheduler();});
 socket.on('disconnect',()=>{addLog('ERROR','WebSocket 断开');document.getElementById('connStatus').textContent='已断开';});
 socket.on('bot_log',(data)=>{if(data&&data.message) addLog('INFO',data.message);});
@@ -1236,13 +1727,13 @@ socket.on('scheduler_status',(data)=>{
   else if(!data.running&&lbl) lbl.textContent='';
   if(!data.running){
     const btn=document.getElementById('btnStartAll');
-    if(btn){btn.disabled=false;btn.textContent='▶ 启动';btn.style.display='';}
+    if(btn){btn.disabled=false;btn.textContent='启动';btn.style.display='';}
     const stopBtn=document.getElementById('btnStopAll');
     if(stopBtn)stopBtn.style.display='none';
   }
 });
 socket.on('bot_login',()=>{document.getElementById('btnConfirmLogin').disabled=false;});
-socket.on('login_result',(data)=>{if(data.success)addLog('SUCCESS','登录状态正常');else addLog('ERROR','未登录');});
+socket.on('login_result',(data)=>{ if(!data) return; if(data.success){addLog('SUCCESS','已登录（Cookie 有效）');} else {addLog('ERROR', data.err ? data.err : '未登录：请在弹出的浏览器中扫码登录');} });
 
 
 socket.on('login_required', (data) => {
@@ -1258,9 +1749,15 @@ socket.on('login_required', (data) => {
   modal.classList.add('active');
   addLog('WARN', '需要登录：请在浏览器中登录后点击确认');
 });
+socket.on('monitor_status',(data)=>{ if(data) setMonitorControls(!!data.running); });
+socket.on('ai_reply_ready',(data)=>{ if(data) renderMonitorReplyCard(data); });
+socket.on('ai_reply_sent',(data)=>{ if(data) finalizeMonitorReply(data); });
 
 loadTheme();
 loadConfig();
+loadCities();
+fetch('/api/monitor/status').then(r=>r.json()).then(d=>{ if(d&&d.running) setMonitorControls(true); }).catch(()=>{});
+initLayout();
 
 function closeLoginModal() {
   const modal = document.getElementById("loginModal");
@@ -1271,15 +1768,72 @@ function closeLoginModal() {
   if (socket) socket.emit("stop_login_modal");
 }
 
-function closeLoginModal() {
-  const modal = document.getElementById("loginModal");
-  if (modal) {
-    modal.style.display = "none";
-    modal.classList.remove("active");
+/* ── 响应式布局：侧栏折叠 + 分割条调节比例 ── */
+function toggleSidebar() {
+  const app = document.querySelector('.app');
+  const narrow = window.matchMedia('(max-width:900px)').matches;
+  if (narrow) {
+    app.classList.toggle('side-overlay');
+    localStorage.setItem('sideOverlay', app.classList.contains('side-overlay') ? '1' : '0');
+  } else {
+    app.classList.toggle('side-collapsed');
+    localStorage.setItem('sideCollapsed', app.classList.contains('side-collapsed') ? '1' : '0');
   }
-  if (socket) socket.emit("stop_login_modal");
+}
+function closeSidebar() {
+  const app = document.querySelector('.app');
+  app.classList.remove('side-overlay');
+  localStorage.setItem('sideOverlay', '0');
+}
+function initLayout() {
+  const app = document.querySelector('.app');
+  if (!app) return;
+  const storedW = parseInt(localStorage.getItem('sideW') || '', 10);
+  if (storedW > 0) document.documentElement.style.setProperty('--side-w', storedW + 'px');
+  if (window.matchMedia('(max-width:900px)').matches) {
+    if (localStorage.getItem('sideOverlay') === '1') app.classList.add('side-overlay');
+  } else if (localStorage.getItem('sideCollapsed') === '1') {
+    app.classList.add('side-collapsed');
+  }
+  initSplitter();
+}
+function initSplitter() {
+  const splitter = document.getElementById('sideSplitter');
+  if (!splitter) return;
+  let dragging = false;
+  function nextWidth(clientX) {
+    const minW = 220;
+    const maxW = Math.max(300, Math.min(540, window.innerWidth * 0.65));
+    return Math.max(minW, Math.min(maxW, clientX));
+  }
+  function stop() {
+    if (!dragging) return;
+    dragging = false;
+    document.body.classList.remove('resizing');
+    splitter.classList.remove('dragging');
+    const w = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--side-w')) || 360;
+    localStorage.setItem('sideW', Math.round(w));
+  }
+  splitter.addEventListener('pointerdown', function(e) {
+    dragging = true;
+    document.body.classList.add('resizing');
+    splitter.classList.add('dragging');
+    try { splitter.setPointerCapture(e.pointerId); } catch (_) {}
+    document.documentElement.style.setProperty('--side-w', nextWidth(e.clientX) + 'px');
+  });
+  splitter.addEventListener('pointermove', function(e) {
+    if (dragging) document.documentElement.style.setProperty('--side-w', nextWidth(e.clientX) + 'px');
+  });
+  splitter.addEventListener('pointerup', stop);
+  splitter.addEventListener('pointercancel', stop);
 }
 
+
+function checkCookieLogin() {
+  const cookie_file = (document.getElementById('accCookie').value || '').trim() || 'zhipin_cookies.json';
+  addLog('INFO', '正在检查登录状态（' + cookie_file + '）...');
+  socket.emit('check_cookie_login', {cookie_file: cookie_file});
+}
 
 function uploadCookieFile(event) {
   const file = event.target.files[0];
@@ -1333,12 +1887,24 @@ function deleteCookieFile() {
     <div class="login-modal-body">
       <div class="login-modal-desc" id="loginModalDesc">登录已过期或未登录，请在弹出的浏览器中完成登录，然后点击下方按钮继续。</div>
       <div class="login-modal-actions">
-        <button class="login-modal-btn" onclick="doConfirmLogin()">✅ 我已登录，继续执行</button>
-        <button class="login-modal-btn login-modal-btn-secondary" onclick="closeLoginModal()">✕ 关闭</button>
+        <button class="login-modal-btn" onclick="doConfirmLogin()">我已登录，继续执行</button>
+        <button class="login-modal-btn login-modal-btn-secondary" onclick="closeLoginModal()">关闭</button>
       </div>
     </div>
   </div>
 </div>
+
+<div class="modal-overlay" id="imagePreview" style="display:none;z-index:1200" onclick="closeImagePreview()">
+  <div class="modal" style="width:auto;max-width:90vw;max-height:90vh;padding:10px;background:rgba(12,15,22,.82);-webkit-backdrop-filter:none;backdrop-filter:none;box-shadow:0 20px 60px rgba(0,0,0,.5)" onclick="event.stopPropagation()">
+    <img id="imagePreviewImg" src="" alt="预览" style="display:block;max-width:86vw;max-height:82vh;border-radius:var(--r-md);object-fit:contain">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;margin-top:8px;color:#fff;font-size:12px">
+      <span id="imagePreviewName" style="opacity:.85;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">预览</span>
+      <button class="btn btn-ghost btn-sm" onclick="closeImagePreview()">关闭</button>
+    </div>
+  </div>
+</div>
+
+<div class="city-combo-list" id="cityComboList"></div>
 
 </body>
 </html>

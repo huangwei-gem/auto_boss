@@ -18,7 +18,7 @@ from urllib.error import URLError
 # ── 常量 ──
 
 CACHE_FILE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "web_app", "ai_cache.json")
-DEFAULT_API_BASE = "https://apihub.agnes-ai.com/v1"
+DEFAULT_API_BASE = "https://api.agnes-ai.cn/v1"
 DEFAULT_MODEL = "agnes-2.5-flash"
 DEFAULT_THRESHOLD = 70
 
@@ -201,8 +201,8 @@ class AIAnalyzer:
             {"role": "user", "content": user_msg},
         ]
 
-    def _call_api(self, messages: list) -> dict:
-        """调用 Agnes API。"""
+    def _call_api_text(self, messages: list, log_msg: str = "正在调用 AI...") -> str:
+        """调用 Agnes API，返回原始回复文本（不解析结构）。"""
         url = f"{self.api_base}/chat/completions"
         payload = json.dumps({
             "model": self.model,
@@ -216,27 +216,84 @@ class AIAnalyzer:
         req.add_header("Content-Type", "application/json")
         req.add_header("Authorization", f"Bearer {self.api_key}")
 
-        self._log("INFO", "正在调用 AI 分析...")
+        self._log("INFO", log_msg)
         try:
             with urlopen(req, timeout=30) as resp:
                 data = json.loads(resp.read().decode("utf-8"))
         except URLError as e:
             raise Exception(f"API 请求失败: {e}")
 
-        # 解析响应
         try:
             content = data["choices"][0]["message"]["content"]
+        except (KeyError, IndexError) as e:
+            raise ValueError(f"API 响应缺少 content: {e}")
+        return content
+
+    def _call_api(self, messages: list) -> dict:
+        """调用 Agnes API 并解析 JSON 结果（岗位匹配分析用）。"""
+        try:
+            content = self._call_api_text(messages, "正在调用 AI 分析...")
             # 提取 JSON 部分
             json_start = content.find("{")
             json_end = content.rfind("}") + 1
             if json_start >= 0 and json_end > json_start:
-                result = json.loads(content[json_start:json_end])
-                return result
-            else:
-                raise ValueError("响应中未找到 JSON")
+                return json.loads(content[json_start:json_end])
+            raise ValueError("响应中未找到 JSON")
         except (KeyError, IndexError, json.JSONDecodeError, ValueError) as e:
             self._log("WARN", f"解析 AI 响应失败: {e}")
             return {"score": 50, "is_match": True, "reason": "解析失败，默认通过"}
+
+    def chat_reply(self, hr_message: str, context: dict, history: list = None) -> str:
+        """根据 HR 的新消息生成回复文本。
+
+        Args:
+            hr_message: HR 发来的最新消息文本
+            context: 上下文，含 job_name / company
+            history: 最近对话记录列表（可选）
+
+        Returns:
+            回复文本；未配置 API Key、参数为空或调用失败时返回空串（不自动发送）。
+        """
+        if not self.api_key or not hr_message:
+            return ""
+        resume = getattr(self, "_resume", {}) or {}
+        job_name = context.get("job_name", "")
+        company = context.get("company", "")
+
+        system_msg = (
+            "你是求职者使用的 Boss直聘 AI 应答助手。你的任务是根据招聘岗位的要求和求职者的简历，"
+            "为 HR 发来的最新消息生成得体的中文回复。要求：真诚、专业、简洁（一般不超过 120 字）、"
+            "紧扣岗位和简历、语气自然不机械。只输出回复内容本身，不要任何解释、前缀或引号。"
+        )
+
+        parts = []
+        if job_name:
+            title = f"岗位：{job_name}" + (f"（{company}）" if company else "")
+            parts.append(title)
+        parts.append(
+            "求职者简历：\n"
+            f"教育背景：{resume.get('school', '')} {resume.get('major', '')} {resume.get('degree', '')}\n"
+            f"技能：{', '.join(resume.get('skills', []) or [])}\n"
+            f"求职意向：{resume.get('target_position', '')}"
+        )
+        if history:
+            parts.append("最近对话：\n" + "\n".join(history[-8:]))
+        parts.append(f"HR 最新消息：{hr_message}")
+        parts.append("请生成回复：")
+
+        messages = [
+            {"role": "system", "content": system_msg},
+            {"role": "user", "content": "\n\n".join(parts)},
+        ]
+        try:
+            text = self._call_api_text(messages, "正在生成 AI 回复...")
+            text = (text or "").strip()
+            if len(text) >= 2 and text[0] == '"' and text[-1] == '"':
+                text = text[1:-1]
+            return text
+        except Exception as e:
+            self._log("WARN", f"AI 回复生成失败: {e}")
+            return ""
 
     def clear_cache(self):
         """清空分析缓存。"""

@@ -10,6 +10,7 @@ Boss直聘自动投递核心逻辑
 import json
 import os
 import random
+import re
 import time
 import threading
 from functools import wraps
@@ -41,11 +42,55 @@ FALLBACK_USER_AGENTS = [
 SELECTOR_NAV = ".user-nav"
 SELECTOR_START_CHAT_TEXT = "立即沟通"
 SELECTOR_START_CHAT_CONTINUE = "继续沟通"
-SELECTOR_INPUT_AREA = ".input-area"
-SELECTOR_SEND_BTN = ".send-message"
-SELECTOR_CLOSE = ".icon-close"
-SELECTOR_BOSS_ACTIVE = ".boss-active-time"
+SELECTOR_START_CHAT = ".btn-startchat"
+SELECTOR_INPUT_AREA = ".input-area"  # 详情页「立即沟通」弹窗输入框（textarea）
+SELECTOR_SEND_BTN = ".send-message"  # 详情页「立即沟通」弹窗发送按钮
+SELECTOR_CLOSE = ".ui-icon-close"
+SELECTOR_BOSS_ACTIVE = ".boss-online-tag"
 SELECTOR_SCALE = ".icon-scale"
+SELECTOR_JOB_CARD = ".job-card-box"
+SELECTOR_JOB_SALARY = ".job-salary"
+SELECTOR_JOB_TAGS = ".tag-list"
+SELECTOR_BOSS_NAME = ".boss-name"
+SELECTOR_COMPANY_LOCATION = ".company-location"
+
+
+def _decode_boss_salary(text: str) -> str:
+    """解码 Boss 薪资里的 iconfont 私用区字符。
+
+    Boss 用 @font-face 把数字映射到私用区 U+E031~U+E03A（对应数字 0~9），
+    textContent 拿到的是私用字符。映射规则已实测校验：cp - 0xE031 = 数字。
+    """
+    if not text:
+        return text or ""
+    out = []
+    for ch in text:
+        cp = ord(ch)
+        if 0xE031 <= cp <= 0xE03A:
+            out.append(str(cp - 0xE031))
+        else:
+            out.append(ch)
+    return "".join(out)
+
+
+# 验证码/滑块弹层探测：命中任一特征即视为风控弹层出现
+HUMAN_VERIFY_JS = """
+(function(){
+  var sels = [
+    "#Tcaptcha-frame", "#tcaptcha_iframe", "#TcaptchaTransform",
+    "iframe[src*='captcha']", "iframe[src*='tcaptcha']", "iframe[src*='verify']",
+    "[class*='tcaptcha']", "[class*='Tcaptcha']",
+    "[class*='captcha']", "[class*='Captcha']",
+    "[class*='slider']", "[class*='slide-verify']",
+    "[id*='captcha']", "[id*='Captcha']",
+    "[class*='verify-block']", "[class*='verify-code']"
+  ];
+  for (var i = 0; i < sels.length; i++) {
+    if (document.querySelector(sels[i])) return true;
+  }
+  return false;
+})()
+"""
 SELECTOR_REC_JOB_LIST = ".rec-job-list"
 SELECTOR_JOB_NAME = ".job-name"
 
@@ -153,6 +198,8 @@ class BotCore:
         self._page_load_timeout = browser_cfg.get("page_load_timeout", 30)
         self._custom_user_agent = browser_cfg.get("custom_user_agent", "")
         self._proxy = browser_cfg.get("proxy", "")
+        self._browser_path = browser_cfg.get("browser_path", "")
+        self._user_data_path = browser_cfg.get("user_data_path", "")
 
         login_cfg = self.config.get("login", {})
         self._login_wait_timeout = login_cfg.get("wait_timeout", 300)
@@ -168,14 +215,25 @@ class BotCore:
         self._retry_base_delay = retry_cfg.get("base_delay", 2.0)
         self._retry_backoff_factor = retry_cfg.get("backoff_factor", 2.0)
 
+        hv_cfg = self.config.get("human_verify", {})
+        self._hv_enabled = hv_cfg.get("enabled", True)
+        self._hv_timeout = hv_cfg.get("wait_timeout", 180)
+
         ai_cfg = self.config.get("ai", {})
         self._ai_enabled = ai_cfg.get("enabled", False)
         self._ai_api_key = ai_cfg.get("api_key", "")
-        self._ai_api_base = ai_cfg.get("api_base", "https://apihub.agnes-ai.com/v1")
+        self._ai_api_base = ai_cfg.get("api_base", "https://api.agnes-ai.cn/v1")
         self._ai_model = ai_cfg.get("model", "agnes-2.5-flash")
         self._ai_threshold = ai_cfg.get("match_threshold", 70)
+        self._ai_sort_by_score = ai_cfg.get("sort_by_score", True)
+        self._ai_skip_inactive_hr = ai_cfg.get("skip_inactive_hr", False)
+        self._ai_inactive_threshold_hours = ai_cfg.get("inactive_threshold_hours", 72)
         self._resume_cfg = self.config.get("resume", {})
         self._ai_analyzer = None
+
+        # 每个岗位的 HR 活跃状态 / 跳过原因（供日志记录）
+        self._hr_active = ""
+        self._last_skip_reason = ""
 
         # 从 config 中读取 _login_required_callback（由 BotRunner 传入）
         self._login_required_cb = self.config.get("_login_required_callback", None)
@@ -189,6 +247,9 @@ class BotCore:
         self._max_interval = self.config.get("message_interval_max", 8)
         self._cookie_file = self.config.get("cookie_file", "zhipin_cookies.json")
 
+        # 调试：抓取页面 HTML 存到 web_app/debug/（用于选择器实机校准）
+        self._debug_capture = bool((self.config.get("debug") or {}).get("capture", False))
+
     def _log(self, level: str, msg: str):
         """统一日志输出。"""
         if self.log_cb:
@@ -201,6 +262,25 @@ class BotCore:
                 "skipped": self.skipped_count,
                 "total": self.total_jobs,
             })
+
+    def _dump_html(self, fname: str):
+        """调试：把当前页面 HTML 存到 web_app/debug/，用于选择器实机校准。"""
+        if not self._debug_capture:
+            return
+        try:
+            html = self.dp.html
+            if not html:
+                return
+            web_app_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            dump_dir = os.path.join(web_app_dir, "debug")
+            os.makedirs(dump_dir, exist_ok=True)
+            safe = "".join(c if c.isalnum() or c in "-_." else "_" for c in fname)
+            path = os.path.join(dump_dir, safe)
+            with open(path, "w", encoding="utf-8") as f:
+                f.write(html)
+            self._log("INFO", f"已保存页面 HTML: web_app/debug/{safe}")
+        except Exception as e:
+            self._log("WARN", f"保存调试页面失败: {e}")
 
     # ── 兼容旧接口 ──
 
@@ -303,6 +383,9 @@ class BotCore:
             self._ai_api_base = task_ai.get("api_base", self._ai_api_base)
             self._ai_model = task_ai.get("model", self._ai_model)
             self._ai_threshold = task_ai.get("match_threshold", self._ai_threshold)
+            self._ai_sort_by_score = task_ai.get("sort_by_score", self._ai_sort_by_score)
+            self._ai_skip_inactive_hr = task_ai.get("skip_inactive_hr", self._ai_skip_inactive_hr)
+            self._ai_inactive_threshold_hours = task_ai.get("inactive_threshold_hours", self._ai_inactive_threshold_hours)
             self._resume_cfg = task.get("resume", self._resume_cfg) or {}
             self._ai_analyzer = None
 
@@ -410,9 +493,21 @@ class BotCore:
                             self._log("INFO", f"城市: {name} -> {code}")
                     if self._city_dict:
                         self._log("SUCCESS", f"已获取 {len(self._city_dict)} 个城市数据")
+                        self._save_city_dict()
                     break
         except Exception as e:
             self._log("WARN", f"城市数据捕获异常: {e}")
+
+    def _save_city_dict(self):
+        """把抓取到的城市列表持久化到 web_app/cities.json，供 Web 端下拉选择。"""
+        try:
+            web_app_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            path = os.path.join(web_app_dir, "cities.json")
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump(self._city_dict, f, ensure_ascii=False, indent=2)
+            self._log("INFO", f"已保存城市列表: web_app/cities.json ({len(self._city_dict)} 个)")
+        except Exception as e:
+            self._log("WARN", f"保存城市列表失败: {e}")
 
 
     def _check_login_expired(self) -> bool:
@@ -448,6 +543,10 @@ class BotCore:
             co = ChromiumOptions()
             co.set_argument("--no-sandbox")
             co.set_argument("--disable-gpu")
+            if self._browser_path:
+                co.set_browser_path(self._browser_path)
+            if self._user_data_path:
+                co.set_user_data_path(self._user_data_path)
             if self._headless:
                 co.set_argument("--headless=new")
             if self._custom_user_agent:
@@ -529,6 +628,9 @@ class BotCore:
                 except Exception:
                     pass
 
+        # 调试：保存搜索页原始 HTML 供选择器校准
+        self._dump_html(f"job_search_{self._query}.html")
+
         job_url_elements = self.dp.eles(SELECTOR_JOB_NAME)
         full_job_urls = []
         for elem in job_url_elements:
@@ -541,37 +643,80 @@ class BotCore:
         self._log("INFO", f"共找到 {len(full_job_urls)} 个岗位链接")
 
         processed_jobs = []
-        rec_list_ele = self.dp.ele(SELECTOR_REC_JOB_LIST, timeout=3)
-        if rec_list_ele:
-            job_name_list = rec_list_ele.texts()
-            self._log("INFO", f"从 rec-job-list 解析出 {len(job_name_list)} 条文本")
-            for idx, job_str in enumerate(job_name_list):
-                parts = job_str.split("\n")
-                if len(parts) < 4:
+        cards = []
+        try:
+            cards = self.dp.eles(SELECTOR_JOB_CARD, timeout=3)
+        except Exception as e:
+            self._log("WARN", f"岗位卡片选择器异常: {e}")
+            cards = []
+        if cards:
+            self._log("INFO", f"从 job-card-box 解析出 {len(cards)} 张岗位卡片")
+            for card in cards:
+                try:
+                    name_el = card.ele(SELECTOR_JOB_NAME, timeout=1)
+                    if not name_el:
+                        continue
+                    url = name_el.attr("href") or ""
+                    if url and not url.startswith("http"):
+                        url = "https://www.zhipin.com" + url
+                    salary_el = card.ele(SELECTOR_JOB_SALARY, timeout=1)
+                    salary = _decode_boss_salary(salary_el.text) if salary_el else ""
+                    tags = []
+                    try:
+                        tag_list_el = card.ele(SELECTOR_JOB_TAGS, timeout=1)
+                        if tag_list_el:
+                            tags = [x.strip() for x in tag_list_el.text.split("\n") if x.strip()]
+                    except Exception:
+                        pass
+                    company_el = card.ele(SELECTOR_BOSS_NAME, timeout=1)
+                    company = company_el.text if company_el else ""
+                    loc_el = card.ele(SELECTOR_COMPANY_LOCATION, timeout=1)
+                    location = (loc_el.text if loc_el else "").strip()
+                    processed_jobs.append({
+                        "job_name": name_el.text,
+                        "salary": salary,
+                        "experience": tags[0] if len(tags) > 0 else "",
+                        "education": tags[1] if len(tags) > 1 else "",
+                        "company": company,
+                        "company_location": (company + " " + location).strip(),
+                        "url": url,
+                        "query": self._query,
+                    })
+                except Exception:
                     continue
-                first_part = parts[0]
-                salary_start = len(first_part)
-                for marker in ["K", "元/月", "元/天", "薪"]:
-                    m_idx = first_part.find(marker)
-                    if m_idx != -1 and m_idx < salary_start:
-                        salary_start = m_idx
-                job_name = first_part[:salary_start].strip() if salary_start < len(first_part) else first_part
-                salary = first_part[salary_start:].strip() if salary_start < len(first_part) else ""
-                processed_jobs.append({
-                    "job_name": job_name,
-                    "salary": salary,
-                    "experience": parts[1] if len(parts) > 1 else "",
-                    "education": parts[2] if len(parts) > 2 else "",
-                    "company_location": parts[3] if len(parts) > 3 else "",
-                    "url": full_job_urls[idx] if idx < len(full_job_urls) else "",
-                    "query": self._query,
-                })
         else:
-            self._log("INFO", "未找到 rec-job-list，直接使用链接")
-            for u in full_job_urls:
-                processed_jobs.append({
-                    "job_name": "", "salary": "", "url": u, "query": self._query
-                })
+            # 兜底：老版 rec-job-list 文本拆分
+            rec_list_ele = self.dp.ele(SELECTOR_REC_JOB_LIST, timeout=3)
+            if rec_list_ele:
+                job_name_list = rec_list_ele.texts()
+                self._log("INFO", f"从 rec-job-list 解析出 {len(job_name_list)} 条文本（兜底）")
+                for idx, job_str in enumerate(job_name_list):
+                    parts = job_str.split("\n")
+                    if len(parts) < 4:
+                        continue
+                    first_part = parts[0]
+                    salary_start = len(first_part)
+                    for marker in ["K", "元/月", "元/天", "薪"]:
+                        m_idx = first_part.find(marker)
+                        if m_idx != -1 and m_idx < salary_start:
+                            salary_start = m_idx
+                    job_name = first_part[:salary_start].strip() if salary_start < len(first_part) else first_part
+                    salary = first_part[salary_start:].strip() if salary_start < len(first_part) else ""
+                    processed_jobs.append({
+                        "job_name": job_name,
+                        "salary": salary,
+                        "experience": parts[1] if len(parts) > 1 else "",
+                        "education": parts[2] if len(parts) > 2 else "",
+                        "company_location": parts[3] if len(parts) > 3 else "",
+                        "url": full_job_urls[idx] if idx < len(full_job_urls) else "",
+                        "query": self._query,
+                    })
+            else:
+                self._log("INFO", "未找到岗位卡片，直接使用链接")
+                for u in full_job_urls:
+                    processed_jobs.append({
+                        "job_name": "", "salary": "", "url": u, "query": self._query
+                    })
 
         self._log("INFO", f"解析出 {len(processed_jobs)} 条岗位信息")
         self.jobs = processed_jobs
@@ -681,12 +826,87 @@ class BotCore:
             self._log("WARN", f"AI 分析异常，按通过处理: {e}")
             return None
 
+    @staticmethod
+    def _parse_active_minutes(text) -> Optional[int]:
+        """把 Boss「刚刚/x分钟前/x小时前/x天前/x月前」解析为分钟数；无法解析返回 None。"""
+        if not text:
+            return None
+        t = text.strip()
+        m = re.search(r"(\d+)", t)
+        num = int(m.group(1)) if m else 0
+        if "刚刚" in t:
+            return 0
+        if "小时" in t:
+            return num * 60
+        if "分钟" in t:
+            return num
+        if "天" in t:
+            return num * 1440
+        if "月" in t:
+            return num * 43200
+        return None
+
+    def _job_below_threshold(self, job: dict) -> bool:
+        """判断岗位是否低于 AI 匹配阈值（仅依据预分析写入 job 的结果）。"""
+        if "ai_score" not in job:
+            return False
+        score = job.get("ai_score", 50)
+        is_match = job.get("ai_is_match", True)
+        return not is_match or score < self._ai_threshold
+
+    def _sort_jobs_by_ai(self):
+        """AI 批量分析全部岗位并按匹配度降序排列。
+
+        结果写回 self.jobs（保持全量，不达标的在遍历时跳过），并为每个岗位写入
+        ai_score / ai_is_match / ai_reason / ai_suggested_greeting。
+        复用 AIAnalyzer 自带缓存，重跑成本低。
+        """
+        analyzer = self._init_ai()
+        if not analyzer:
+            return
+        self._log("INFO", f"📊 AI 批量分析 {len(self.jobs)} 个岗位的匹配度...")
+        scored = []
+        for idx, job in enumerate(self.jobs):
+            if not self.running:
+                break
+            ai_job = {
+                "job_name": job.get("job_name", ""),
+                "salary": job.get("salary", ""),
+                "description": job.get("description", job.get("job_desc", "")),
+                "requirements": job.get("requirements", ""),
+                "company": job.get("company", ""),
+                "url": job.get("url", ""),
+            }
+            try:
+                result = analyzer.analyze_job(ai_job)
+            except Exception as e:
+                self._log("WARN", f"AI 分析异常，按通过处理: {e}")
+                result = {"score": 50, "is_match": True, "reason": "分析异常默认通过", "suggested_greeting": ""}
+            score = result.get("score", 50)
+            is_match = result.get("is_match", True)
+            job["ai_score"] = score
+            job["ai_is_match"] = is_match
+            job["ai_reason"] = result.get("reason", "")
+            job["ai_suggested_greeting"] = result.get("suggested_greeting", "")
+            scored.append((job, score, is_match))
+            self._log("INFO", f"  [{idx+1}/{len(self.jobs)}] {job.get('job_name', '未知岗位')} → {score} 分")
+        scored.sort(key=lambda x: (x[2], x[1]), reverse=True)
+        self.jobs = [item[0] for item in scored]
+        self._log("INFO", "📊 匹配度排序（从高到低）：")
+        for i, (job, score, is_match) in enumerate(scored):
+            flag = "" if (is_match and score >= self._ai_threshold) else "（不达标，跳过）"
+            self._log("INFO", f"  {i+1}. {score} 分 · {job.get('job_name', '未知岗位')} {flag}")
+
     def _step_browse_jobs(self):
         """遍历岗位列表并投递。"""
         # 先解析图片
         resolved_images = self._resolve_images()
         self._image_files = resolved_images
         self._log("INFO", f"最终准备发送 {len(self._image_files)} 张作品图片")
+
+        # 智能排序：AI 批量分析并按匹配度降序排列
+        if self._ai_enabled and self._ai_api_key and self._ai_sort_by_score:
+            self._sort_jobs_by_ai()
 
         self.total_jobs = len(self.jobs)
         self._report_progress()
@@ -702,20 +922,31 @@ class BotCore:
             self._random_delay(self._min_interval, self._max_interval)
             # AI 智能匹配：不达标的岗位直接跳过
             if self._ai_enabled and self._ai_api_key:
-                ai_result = self._analyze_job_with_ai(job)
-                if ai_result is None and self._init_ai() is not None:
-                    self._log("WARN", f"🤖 AI 判定不匹配，跳过: {job.get('job_name', '')}")
-                    self.skipped_count += 1
-                    self._save_chat_log(job, skipped=True)
-                    self._report_progress()
-                    continue
-                if ai_result and ai_result.get("suggested_greeting"):
-                    self._greeting_message = ai_result["suggested_greeting"]
+                if self._ai_sort_by_score:
+                    # 排序阶段已批量分析，直接用结果判定
+                    if self._job_below_threshold(job):
+                        self._log("WARN", f"🤖 AI 判定不匹配，跳过: {job.get('job_name', '')}")
+                        self.skipped_count += 1
+                        self._save_chat_log(job, skipped=True, skip_reason="ai_below_threshold")
+                        self._report_progress()
+                        continue
+                    if job.get("ai_suggested_greeting"):
+                        self._greeting_message = job["ai_suggested_greeting"]
+                else:
+                    ai_result = self._analyze_job_with_ai(job)
+                    if ai_result is None and self._init_ai() is not None:
+                        self._log("WARN", f"🤖 AI 判定不匹配，跳过: {job.get('job_name', '')}")
+                        self.skipped_count += 1
+                        self._save_chat_log(job, skipped=True, skip_reason="ai_below_threshold")
+                        self._report_progress()
+                        continue
+                    if ai_result and ai_result.get("suggested_greeting"):
+                        self._greeting_message = ai_result["suggested_greeting"]
             if self._is_already_chatted(job):
                 self._log("INFO", f"⏭️ 已沟通过: {job.get('job_name', '')}")
                 self.skipped_count += 1
                 self._report_progress()
-                self._save_chat_log(job, skipped=True)
+                self._save_chat_log(job, skipped=True, skip_reason="already_chatted")
                 continue
             if not self._check_login_expired():
                 break
@@ -727,7 +958,8 @@ class BotCore:
                     self._log("SUCCESS", f"✅ 已投递: {job.get('job_name', '')}")
                 else:
                     self.skipped_count += 1
-                    self._log("WARN", f"⏭️ 跳过: {job.get('job_name', '')}")
+                    self._save_chat_log(job, skipped=True, skip_reason=self._last_skip_reason or "apply_failed")
+                    self._log("WARN", f"⏭️ 跳过: {job.get('job_name', '')}（{self._last_skip_reason or '投递失败'}）")
             except PageDisconnectedError:
                 self._log("WARN", "页面连接断开，尝试恢复...")
                 if self._handle_disconnect():
@@ -739,9 +971,11 @@ class BotCore:
                             self._log("SUCCESS", f"✅ 已投递: {job.get('job_name', '')}")
                         else:
                             self.skipped_count += 1
+                            self._save_chat_log(job, skipped=True, skip_reason=self._last_skip_reason or "apply_failed_retry")
                     except Exception as e2:
                         self._log("WARN", f"重试投递异常: {e2}")
                         self.skipped_count += 1
+                        self._save_chat_log(job, skipped=True, skip_reason="apply_failed_exception")
                 else:
                     self._log("ERROR", "无法恢复连接，终止任务")
                     break
@@ -819,6 +1053,10 @@ class BotCore:
         if not url:
             return False
 
+        # 重置本岗位的 HR 活跃状态 / 跳过原因
+        self._hr_active = ""
+        self._last_skip_reason = ""
+
         # 如果页面已断开，先尝试恢复
         if _disconnect_retry == 0:
             try:
@@ -884,6 +1122,18 @@ class BotCore:
                 self._log("WARN", "页面断开")
                 return False
 
+            # 调试：保存岗位详情页原始 HTML 供选择器校准
+            try:
+                _url_seg = re.sub(r"[^0-9a-zA-Z]", "_", (url or "").split("?")[0].rstrip("/").split("/")[-1] or "")
+            except Exception:
+                _url_seg = ""
+            self._dump_html(f"job_detail_{_url_seg or self._query}.html")
+
+            # ── 1.5 风控检查：详情页可能直接触发验证弹层 ──
+            if not self._wait_human_verify():
+                self._log("WARN", "详情页验证未解除，跳过该岗位")
+                return False
+
             # ── 2. 查找沟通按钮（严格参考源文件 .btn btn-startchat） ──
             # 先检查是否已沟通过（源文件：if dp.ele(".btn btn-startchat").text in "继续沟通"）
             chat_btn = self._find_chat_button(timeout=8)
@@ -891,18 +1141,40 @@ class BotCore:
                 self._log("WARN", "未找到沟通按钮")
                 return False
 
-            btn_text = chat_btn.text
-            if "继续沟通" in btn_text:
+            btn_text = chat_btn.text or ""
+            ka = ""
+            isfriend = ""
+            try:
+                ka = chat_btn.attr("ka") or ""
+            except Exception:
+                pass
+            try:
+                isfriend = chat_btn.attr("data-isfriend") or ""
+            except Exception:
+                pass
+            # 实证（2026-08-13 真实 DOM）：未沟通=文本「立即沟通」+data-isfriend="false"；
+            # 已沟通=文本「继续沟通」+data-isfriend="true"。ka 恒为 go_chat_done_xxx，
+            # 两种状态一致，不能作为区分依据。
+            if "继续沟通" in btn_text or isfriend.lower() == "true":
                 self._log("INFO", "之前已经沟通过，不需要再沟通")
                 self._mark_chatted(job)
                 return True
 
             # ── 3. 获取信息（参考源文件） ──
             try:
-                boss_active = self.dp.ele(".boss-active-time", timeout=3).text
+                boss_active = self.dp.ele(SELECTOR_BOSS_ACTIVE, timeout=3).text
+                self._hr_active = boss_active or ""
                 self._log("INFO", "上线状态: " + boss_active[:50])
             except Exception:
                 pass
+            # HR 活跃度过滤：跳过长期不活跃的岗位（对应「定时投递」的活跃感知）
+            if self._ai_skip_inactive_hr:
+                active_minutes = self._parse_active_minutes(self._hr_active)
+                threshold_minutes = self._ai_inactive_threshold_hours * 60
+                if active_minutes is not None and active_minutes > threshold_minutes:
+                    self._log("WARN", f"HR 长期不活跃（约 {active_minutes/60:.0f} 小时前），跳过")
+                    self._last_skip_reason = "hr_inactive"
+                    return False
             try:
                 company_scale = self.dp.ele(".icon-scale", timeout=3).text
                 self._log("INFO", "公司规模: " + company_scale[:50])
@@ -914,7 +1186,7 @@ class BotCore:
             except Exception:
                 pass
             try:
-                salary = self.dp.ele(".salary", timeout=3).text
+                salary = _decode_boss_salary(self.dp.ele(".salary", timeout=3).text)
                 self._log("INFO", "薪资: " + salary[:50])
             except Exception:
                 pass
@@ -927,6 +1199,12 @@ class BotCore:
                 self._log("WARN", "点击沟通按钮失败: " + str(e))
                 return False
 
+            # ── 4.5 风控检查：点击沟通常触发验证弹层 ──
+            if not self._wait_human_verify():
+                self._mark_chatted(job)
+                self._log("WARN", "沟通后验证未解除，标记已处理避免重复触发")
+                return True
+
             # 检查页面是否断开
             try:
                 _ = self.dp.url
@@ -938,16 +1216,21 @@ class BotCore:
             # ── 5. 输入消息（源文件：dp.ele(".input-area").input(message)） ──
             greeting = self._greeting_message or "您好，我是双一流的本科，应聘数据分析岗位。在校系统学习数据分析相关知识，掌握Excel、基础SQL与数据整理技能，具备数据思维。做事严谨细心，学习能力强，愿意踏实积累。十分认可贵公司，希望能获得面试机会。"
             try:
-                input_area = self.dp.ele(".input-area", timeout=5)
+                input_area = self.dp.ele(SELECTOR_INPUT_AREA, timeout=5)
                 if input_area:
                     input_area.input(greeting)
                     self._random_delay(1, 2)
                 else:
                     self._log("WARN", "未找到输入框")
-                    # 尝试通过 JS 查找
+                    # 兜底：textarea 用 value 赋值并派发 input 事件
                     try:
-                        self.dp.run_js("document.querySelector('.input-area')?.focus()")
-                        self.dp.run_js(f"document.querySelector('.input-area')?.value='{greeting[:50]}'")
+                        self.dp.run_js(
+                            "(function(t){var el=document.querySelector('.input-area');"
+                            "if(!el)return;el.focus();el.value=t;"
+                            "el.dispatchEvent(new Event('input',{bubbles:true}));"
+                            "el.dispatchEvent(new Event('change',{bubbles:true}));})(arguments[0])",
+                            greeting,
+                        )
                     except Exception:
                         pass
                     return False
@@ -957,7 +1240,7 @@ class BotCore:
 
             # ── 6. 点击发送（源文件：dp.ele(".send-message").click()） ──
             try:
-                send_btn = self.dp.ele(".send-message", timeout=5)
+                send_btn = self.dp.ele(SELECTOR_SEND_BTN, timeout=5)
                 if send_btn:
                     send_btn.click()
                 else:
@@ -965,6 +1248,12 @@ class BotCore:
                 self._random_delay(1, 2)
             except Exception as e:
                 self._log("WARN", "发送消息失败: " + str(e))
+
+            # ── 6.5 风控检查：发送消息后确认无验证弹层 ──
+            if not self._wait_human_verify():
+                self._mark_chatted(job)
+                self._log("WARN", "发送后验证未解除，标记已处理")
+                return True
 
             # 发送后检测页面是否断开
             try:
@@ -977,14 +1266,24 @@ class BotCore:
             # ── 7. 发送图片（在发送消息之后） ──
             self._send_images_after_message()
 
+            # ── 7.5 风控检查：图片发送后确认无验证弹层 ──
+            if not self._wait_human_verify():
+                self._mark_chatted(job)
+                self._log("WARN", "图片发送后验证未解除，标记已处理")
+                return True
+
             # ── 清理状态 ──
             try:
-                close_btn = self.dp.ele(".icon-close", timeout=2)
+                close_btn = self.dp.ele(SELECTOR_CLOSE, timeout=2)
                 if close_btn:
                     close_btn.click()
                     self._random_delay(1, 2)
             except Exception:
                 pass
+
+            # 记录已投递，避免列表轮转时重复打扰同一 HR
+            self._mark_chatted(job)
+            return True
 
         except PageDisconnectedError:
             self._log("WARN", "投递过程中页面连接断开")
@@ -1011,7 +1310,7 @@ class BotCore:
 
         # 参考源文件流程：先关闭当前聊天窗口，再重新打开
         try:
-            close_btn = self.dp.ele(".icon-close", timeout=2)
+            close_btn = self.dp.ele(SELECTOR_CLOSE, timeout=2)
             if close_btn:
                 close_btn.click()
                 self._random_delay(1, 2)
@@ -1021,7 +1320,7 @@ class BotCore:
         # 检查聊天窗口是否打开，未打开则重新打开
         input_area = None
         try:
-            input_area = self.dp.ele(".input-area", timeout=3)
+            input_area = self.dp.ele(SELECTOR_INPUT_AREA, timeout=3)
         except Exception:
             pass
 
@@ -1063,8 +1362,16 @@ class BotCore:
         import time as _time
         _time.sleep(1)
 
-        # 1. 文本匹配 —— 最可靠（源文件：dp.ele(".btn btn-startchat").text）
-        for chat_text in ("立即沟通", "继续沟通"):
+        # 1. 按钮 class（真实 Boss：a.btn-startchat，带 ka/data-isfriend/redirect-url 属性）
+        try:
+            btn = self.dp.ele(SELECTOR_START_CHAT, timeout=timeout)
+            if btn:
+                return btn
+        except Exception:
+            pass
+
+        # 2. 文本匹配 —— 老版本兜底（真实页面按钮文本统一为「立即沟通」，不能区分是否已沟通）
+        for chat_text in (SELECTOR_START_CHAT_TEXT, SELECTOR_START_CHAT_CONTINUE):
             try:
                 btn = self.dp.ele(f"text:{chat_text}", timeout=timeout)
                 if btn:
@@ -1072,8 +1379,8 @@ class BotCore:
             except Exception:
                 pass
 
-        # 2. DrissionPage AND 语法（源文件风格：.btn btn-startchat，空格分隔类名）
-        for and_sel in [".btn btn-startchat", ".btn-startchat", ".btn.btn-startchat", ".btn .btn-startchat"]:
+        # 3. DrissionPage AND 语法（源文件风格：.btn btn-startchat，空格分隔类名）
+        for and_sel in [".btn btn-startchat", ".btn.btn-startchat", ".btn .btn-startchat"]:
             try:
                 btn = self.dp.ele(and_sel, timeout=timeout)
                 if btn:
@@ -1081,7 +1388,7 @@ class BotCore:
             except Exception:
                 pass
 
-        # 3. ka 属性选择器（boss直聘特有）
+        # 4. ka 属性选择器（boss直聘特有）
         try:
             btn = self.dp.ele("[ka='btn-startchat']", timeout=timeout)
             if btn:
@@ -1089,7 +1396,7 @@ class BotCore:
         except Exception:
             pass
 
-        # 4. DrissionPage 特殊语法
+        # 5. DrissionPage 特殊语法
         try:
             btn = self.dp.ele("tag:a@@class=btn-startchat", timeout=timeout)
             if btn:
@@ -1097,7 +1404,7 @@ class BotCore:
         except Exception:
             pass
 
-        # 5. JS 大范围查找（兜底）
+        # 6. JS 大范围查找（兜底）
         try:
             btn = self.dp.run_js("""
                 var btns = document.querySelectorAll('a, button, div, span');
@@ -1212,6 +1519,37 @@ class BotCore:
             time.sleep(interval)
         return self.running
 
+    # ── 风控 / 验证码滑块人工验证 ──
+
+    def _human_verify_present(self) -> bool:
+        """探测页面是否存在验证码/滑块弹层。"""
+        if not self._hv_enabled:
+            return False
+        try:
+            return bool(self.dp.run_js(HUMAN_VERIFY_JS))
+        except Exception:
+            return False
+
+    def _wait_human_verify(self, timeout: Optional[float] = None) -> bool:
+        """检测到验证弹层时暂停，等待用户在浏览器中手动完成。返回是否已解除。
+
+        弹层由真实用户操作触发（Boss 风控），无法自动绕过；只能暂停投递，
+        轮询直到弹层消失（或超时）。
+        """
+        if not self._human_verify_present():
+            return True
+        if timeout is None:
+            timeout = self._hv_timeout
+        self._log("WARN", "⚠️ 检测到验证码/滑块弹层，请在浏览器中手动完成验证")
+        deadline = time.time() + timeout
+        while self.running and time.time() < deadline:
+            self._random_delay(2, 4)
+            if not self._human_verify_present():
+                self._log("SUCCESS", "✅ 人工验证已通过，继续投递")
+                return True
+        self._log("ERROR", f"⏰ 等待人工验证超时（{timeout:.0f}s），已放弃当前操作")
+        return False
+
     # ── Cookie 管理 ──
 
     def _load_cookies(self) -> bool:
@@ -1317,7 +1655,7 @@ class BotCore:
 
     # ── 聊天日志 ──
 
-    def _save_chat_log(self, job: dict, skipped: bool = False):
+    def _save_chat_log(self, job: dict, skipped: bool = False, skip_reason: str = ""):
         try:
             logs = []
             if os.path.exists(CHATS_LOG_FILE):
@@ -1331,6 +1669,9 @@ class BotCore:
                 "query": self._query,
                 "city": self._city,
                 "skipped": skipped,
+                "skip_reason": skip_reason,
+                "score": job.get("ai_score"),
+                "hr_active": self._hr_active,
             })
             with open(CHATS_LOG_FILE, "w", encoding="utf-8") as f:
                 json.dump(logs[-500:], f, ensure_ascii=False, indent=2)

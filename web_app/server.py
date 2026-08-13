@@ -1,4 +1,4 @@
-import json, os, sys, threading, uuid, shutil, urllib.parse, logging, time
+import json, os, sys, threading, uuid, shutil, urllib.parse, logging, time, copy, re
 from typing import Optional
 from flask import Flask, render_template, request, jsonify, send_file, abort
 from flask_socketio import SocketIO, emit
@@ -10,7 +10,9 @@ os.chdir(BASE_DIR)
 
 from config import load_config, save_config, validate_config, flatten_jobs_for_run, DEFAULT_GREETING
 sys.path.insert(0, os.path.join(PROJECT_DIR, "core"))
-from bot_core import BotCore
+from bot_core import BotCore, CITY_CODES
+from chat_monitor import ChatMonitor
+from report import aggregate_weekly_stats, generate_report_text
 
 app = Flask(__name__)
 app.config["SECRET_KEY"] = os.urandom(24).hex()
@@ -25,6 +27,17 @@ _scheduler_run_id = 0
 _scheduler_running = False
 _bot = None
 _config = None
+
+# AI 值守（多轮应答）
+_monitor = None
+_monitor_thread = None
+_monitor_running = False
+_monitor_lock = threading.Lock()
+
+# 登录检查（Cookie 验证，独立于投递/值守）
+_login_check_bot = None
+_login_check_thread = None
+_login_check_lock = threading.Lock()
 
 def _ensure_config():
     """确保 _config 已初始化。"""
@@ -223,6 +236,22 @@ class TaskScheduler:
 @app.route("/")
 def index():
     return render_template("index.html")
+
+
+def _stop_monitor():
+    """停止 AI 值守（线程安全）。"""
+    global _monitor, _monitor_thread, _monitor_running
+    with _monitor_lock:
+        if _monitor:
+            try:
+                _monitor.stop()
+            except Exception:
+                pass
+        if _monitor_thread and _monitor_thread.is_alive():
+            _monitor_thread.join(timeout=5)
+        _monitor = None
+        _monitor_thread = None
+        _monitor_running = False
 
 
 # ── Config API ──
@@ -464,6 +493,75 @@ def api_delete_image():
                         return jsonify({"status": "error", "message": str(e)}), 500
     return jsonify({"status": "error", "message": "文件不存在"}), 404
 
+
+@app.route("/api/images/rename", methods=["POST"])
+def api_images_rename():
+    data = request.get_json() or {}
+    path = urllib.parse.unquote((data.get("path") or ""))
+    raw_new = (data.get("new_name") or "").strip()
+    if not path or not raw_new:
+        return jsonify({"status": "error", "message": "path 与 new_name 不能为空"}), 400
+    new_name = urllib.parse.unquote(raw_new).strip()
+    if not new_name or new_name.startswith(".") or any(c in new_name for c in ("/", "\\")):
+        return jsonify({"status": "error", "message": "非法文件名"}), 400
+    clean = os.path.basename(path).replace("dashboard/", "").replace("dashboard\\", "")
+    dashboard_dir = os.path.join(BASE_DIR, "dashboard")
+    if not os.path.exists(dashboard_dir):
+        return jsonify({"status": "error", "message": "dashboard 目录不存在"}), 404
+    src = os.path.join(dashboard_dir, clean)
+    if not os.path.isfile(src):
+        # 精确匹配失败时尝试模糊匹配（忽略大小写/空格/下划线）
+        clean_key = re.sub(r"[\s_\-]", "", clean.lower())
+        for fn in os.listdir(dashboard_dir):
+            if re.sub(r"[\s_\-]", "", fn.lower()) == clean_key:
+                src = os.path.join(dashboard_dir, fn)
+                break
+        if not os.path.isfile(src):
+            return jsonify({"status": "error", "message": "文件不存在"}), 404
+    dst = os.path.join(dashboard_dir, new_name)
+    if os.path.exists(dst):
+        return jsonify({"status": "error", "message": "目标文件已存在"}), 409
+    try:
+        os.rename(src, dst)
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+    old_name = os.path.basename(src)
+    new_ref = "dashboard/" + new_name
+    # 同步改写所有账号的 image_files 引用
+    cfg = load_config()
+    changed = 0
+    for acc in cfg.get("accounts", []):
+        imgs = acc.get("image_files") or []
+        for i, ref in enumerate(imgs):
+            if ref.replace("dashboard/", "").replace("dashboard\\", "") == old_name:
+                imgs[i] = new_ref
+                changed += 1
+    if changed:
+        try:
+            save_config(cfg)
+        except Exception:
+            pass
+    return jsonify({"status": "ok", "name": new_name})
+
+
+@app.route("/api/cities", methods=["GET"])
+def api_cities():
+    """城市下拉列表：抓取到的城市（web_app/cities.json）优先，其次硬编码热门城市。"""
+    cities = {}
+    cities_file = os.path.join(BASE_DIR, "cities.json")
+    if os.path.exists(cities_file):
+        try:
+            with open(cities_file, "r", encoding="utf-8") as f:
+                saved = json.load(f)
+            if isinstance(saved, dict):
+                cities.update(saved)
+        except Exception:
+            pass
+    for name, code in CITY_CODES.items():
+        cities.setdefault(name, code)
+    return jsonify({"status": "ok", "cities": list(cities.keys())})
+
+
 @app.route("/api/upload/greeting", methods=["POST"])
 def api_upload_greeting():
     f = request.files.get("file")
@@ -642,6 +740,11 @@ def on_start_all(data=None):
         time.sleep(1)
         logger.info("已停止旧调度器线程，重新启动")
 
+    # 值守与调度器互斥：启动调度器前先停值守
+    if _monitor_running:
+        emit("bot_log", {"message": "[SYSTEM] 正在停止 AI 值守..."})
+        _stop_monitor()
+
     _config = load_config()
     tasks = flatten_jobs_for_run(_config)
     if not tasks:
@@ -689,7 +792,7 @@ def on_start_all(data=None):
 
 
 @socketio.on("stop_all")
-def on_stop_all():
+def on_stop_all(data=None):
     global _scheduler_stop, _scheduler_thread, _bot, _scheduler_running
     with _scheduler_lock:
         _scheduler_stop.set()
@@ -702,6 +805,7 @@ def on_stop_all():
         if _scheduler_thread and _scheduler_thread.is_alive():
             _scheduler_thread.join(timeout=3)
         _scheduler_thread = None
+    _stop_monitor()
     try:
         emit("bot_log", {"message": "[SYSTEM] 正在停止调度器..."})
         emit("bot_status", {"running": False})
@@ -711,9 +815,12 @@ def on_stop_all():
 
 
 @socketio.on("confirm_login")
-def on_confirm_login():
-    global _bot
-    if _bot:
+def on_confirm_login(data=None):
+    global _bot, _login_check_bot
+    if _login_check_bot:
+        _login_check_bot.confirm_login()
+        emit("bot_log", {"message": "[LOGIN] 用户确认已登录，正在保存 Cookie..."})
+    elif _bot:
         _bot.confirm_login()
         emit("bot_log", {"message": "[LOGIN] 用户确认已登录，继续执行..."})
     else:
@@ -721,17 +828,107 @@ def on_confirm_login():
 
 
 @socketio.on("check_login")
-def on_check_login():
+def on_check_login(data=None):
     global _bot
     if _bot:
         ok = _bot.check_login_status()
-        emit("bot_login_status", {"logged_in": ok})
+        emit("login_result", {"success": bool(ok), "logged_in": bool(ok)})
     else:
-        emit("bot_login_status", {"logged_in": False})
+        emit("login_result", {"success": False, "logged_in": False})
+
+
+@socketio.on("check_cookie_login")
+def on_check_cookie_login(data=None):
+    """用当前账号的 Cookie 检查登录状态；未登录则打开浏览器引导扫码，成功后保存 Cookie。"""
+    global _login_check_bot, _login_check_thread
+    data = data or {}
+    sid = request.sid
+
+    if _scheduler_running or _monitor_running:
+        emit("bot_log", {"message": "[SYSTEM] 请先停止投递/值守，再检查登录状态"})
+        return
+    with _login_check_lock:
+        if _login_check_thread and _login_check_thread.is_alive():
+            emit("bot_log", {"message": "[SYSTEM] 登录检查进行中，请稍候"})
+            return
+        cfg = load_config()
+        cookie_file = (data.get("cookie_file") or "").strip() or "zhipin_cookies.json"
+        accounts = cfg.get("accounts") or []
+        acc = None
+        for a in accounts:
+            if (a.get("cookie_file") or "zhipin_cookies.json") == cookie_file:
+                acc = a
+                break
+        if acc is None and accounts:
+            acc = accounts[0]
+        if not acc:
+            emit("bot_log", {"message": "[SYSTEM] 未找到账号配置，无法检查登录"})
+            emit("login_result", {"success": False, "logged_in": False, "err": "未找到账号配置"})
+            return
+        acc_name = acc.get("name", "主账号")
+
+        def login_required_cb():
+            try:
+                socketio.emit("login_required", {
+                    "account": acc_name,
+                    "message": f"[{acc_name}] 未登录，请在浏览器中扫码/完成登录，然后点击「确认登录」",
+                }, to=sid)
+            except Exception:
+                pass
+
+        task = {
+            "cookie_file": acc.get("cookie_file", cookie_file),
+            "browser": cfg.get("browser", {}),
+            "login": cfg.get("login", {}),
+            "retry": cfg.get("retry", {}),
+            "ai": cfg.get("ai", {}),
+            "resume": cfg.get("resume", {}),
+            "debug": cfg.get("debug", {}),
+            "_login_required_callback": login_required_cb,
+        }
+
+        def log_cb(msg):
+            try:
+                socketio.emit("bot_log", {"message": f"[登录检查/{acc_name}] {msg}"}, to=sid)
+            except Exception:
+                pass
+
+        bot = BotCore(config=task, log_callback=log_cb)
+        _login_check_bot = bot
+
+    def _run():
+        global _login_check_bot
+        ok = False
+        try:
+            if bot._init_browser():
+                ok = bot._check_and_handle_login()
+        except Exception as e:
+            logger.error(f"登录检查异常: {e}")
+            ok = False
+        finally:
+            try:
+                if bot.dp:
+                    bot.dp.quit()
+            except Exception:
+                pass
+            _login_check_bot = None
+        try:
+            if ok:
+                socketio.emit("login_result", {"success": True, "logged_in": True}, to=sid)
+                socketio.emit("bot_log", {"message": "[SYSTEM] 已登录（Cookie 有效）✓"}, to=sid)
+            else:
+                socketio.emit("login_result", {"success": False, "logged_in": False}, to=sid)
+                socketio.emit("bot_log", {"message": "[SYSTEM] 未登录 / 登录失败，请重试"}, to=sid)
+        except Exception:
+            pass
+
+    _login_check_thread = threading.Thread(target=_run, daemon=True)
+    _login_check_thread.start()
+    emit("bot_log", {"message": f"[SYSTEM] 正在检查登录状态（账号「{acc_name}」）..."})
 
 
 @socketio.on("stop_login_modal")
-def on_stop_login_modal():
+def on_stop_login_modal(data=None):
     """关闭登录弹窗。"""
     emit("close_login_modal")
 
@@ -751,7 +948,7 @@ def _get_ai_analyzer():
         from core.ai_analyzer import AIAnalyzer
         _ai_analyzer = AIAnalyzer(
             api_key=ai_cfg.get("api_key", ""),
-            api_base=ai_cfg.get("api_base", "https://apihub.agnes-ai.com/v1"),
+            api_base=ai_cfg.get("api_base", "https://api.agnes-ai.cn/v1"),
             model=ai_cfg.get("model", "agnes-2.5-flash"),
             match_threshold=ai_cfg.get("match_threshold", 70),
             log_callback=lambda msg: logger.info(msg),
@@ -815,7 +1012,7 @@ def api_save_ai_config():
         cfg["ai"] = {
             "enabled": data.get("enabled", False),
             "api_key": data.get("api_key", ""),
-            "api_base": data.get("api_base", "https://apihub.agnes-ai.com/v1"),
+            "api_base": data.get("api_base", "https://api.agnes-ai.cn/v1"),
             "model": data.get("model", "agnes-2.5-flash"),
             "match_threshold": int(data.get("match_threshold", 70)),
         }
@@ -903,12 +1100,173 @@ def api_ai_stats():
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
+# ── AI 投递周报 ──
+
+@app.route("/api/report/weekly", methods=["GET"])
+def api_weekly_report():
+    """聚合最近 N 天投递数据并生成 AI 周报。"""
+    try:
+        days = int(request.args.get("days", 7))
+    except (TypeError, ValueError):
+        days = 7
+    days = max(1, min(days, 30))
+    try:
+        stats = aggregate_weekly_stats(days)
+    except Exception as e:
+        logger.error("聚合周报统计失败: %s", e)
+        return jsonify({"status": "error", "message": str(e)}), 500
+    ai_cfg = load_config().get("ai", {})
+    summary = ""
+    if ai_cfg.get("api_key"):
+        try:
+            summary = generate_report_text(stats, ai_cfg)
+        except Exception as e:
+            logger.error("生成 AI 投递周报失败: %s", e)
+            summary = ""
+    return jsonify({
+        "status": "ok",
+        "stats": stats,
+        "summary": summary,
+        "ai_available": bool(ai_cfg.get("api_key")),
+    })
+
+
+# ── AI 值守（多轮应答） ──
+
+def _emit_monitor_login_required(sid, account_name):
+    try:
+        socketio.emit("login_required", {
+            "account": account_name,
+            "message": f"[值守 / {account_name}] 登录已过期，请在浏览器中重新登录后点击「确认登录」",
+        }, to=sid)
+    except Exception:
+        pass
+
+
+@socketio.on("monitor_start")
+def on_monitor_start(data=None):
+    global _monitor, _monitor_thread, _monitor_running, _config
+    global _scheduler_running, _scheduler_thread, _scheduler_stop, _bot
+    sid = request.sid
+    data = data or {}
+    cfg = load_config()
+
+    # 互斥：值守启动前先停调度器
+    if _scheduler_running:
+        emit("bot_log", {"message": "[SYSTEM] 正在停止调度器..."})
+        _scheduler_stop.set()
+        if _bot:
+            try:
+                _bot.stop()
+            except Exception:
+                pass
+            _bot = None
+        if _scheduler_thread and _scheduler_thread.is_alive():
+            _scheduler_thread.join(timeout=10)
+        _scheduler_thread = None
+        _scheduler_running = False
+        _scheduler_stop.clear()
+
+    # 停旧值守
+    if _monitor_running:
+        emit("bot_log", {"message": "[SYSTEM] 正在停止旧值守..."})
+        _stop_monitor()
+
+    accounts = cfg.get("accounts", [])
+    acc_idx = int(data.get("account_idx", 0) or 0)
+    if not (0 <= acc_idx < len(accounts)):
+        emit("bot_log", {"message": "[SYSTEM] 账号索引越界，无法启动值守"})
+        return
+    acc = accounts[acc_idx]
+    acc_name = acc.get("name", f"账号{acc_idx + 1}")
+
+    mon_config = {
+        "browser": cfg.get("browser", {}),
+        "login": cfg.get("login", {}),
+        "retry": cfg.get("retry", {}),
+        "human_verify": cfg.get("human_verify", {}),
+        "ai": cfg.get("ai", {}),
+        "resume": cfg.get("resume", {}),
+        "monitor": cfg.get("monitor", {}),
+        "cookie_file": acc.get("cookie_file", "zhipin_cookies.json"),
+        "image_files": acc.get("image_files", []),
+        "message_interval_min": acc.get("message_interval_min", 3),
+        "message_interval_max": acc.get("message_interval_max", 8),
+        "_login_required_callback": lambda: _emit_monitor_login_required(sid, acc_name),
+    }
+
+    def log_cb(msg):
+        try:
+            socketio.emit("bot_log", {"message": f"[值守/{acc_name}] {msg}"}, to=sid)
+        except Exception:
+            pass
+
+    def emit_cb(event, data):
+        try:
+            socketio.emit(event, data, to=sid)
+        except Exception:
+            pass
+
+    _monitor = ChatMonitor(mon_config, log_callback=log_cb, emit_callback=emit_cb, sid=sid)
+    _monitor_running = True
+
+    def _run():
+        global _monitor_running
+        try:
+            _monitor.run_monitor()
+        except Exception as e:
+            logger.error(f"值守异常: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+        finally:
+            _monitor_running = False
+
+    t = threading.Thread(target=_run, daemon=True)
+    _monitor_thread = t
+    t.start()
+    emit("bot_log", {"message": f"[SYSTEM] AI 值守启动：账号「{acc_name}」"})
+    emit("monitor_status", {"running": True})
+
+
+@socketio.on("monitor_stop")
+def on_monitor_stop(data=None):
+    global _monitor_running
+    _stop_monitor()
+    _monitor_running = False
+    emit("bot_log", {"message": "[SYSTEM] AI 值守已停止"})
+    emit("monitor_status", {"running": False})
+
+
+@socketio.on("send_monitor_reply")
+def on_send_monitor_reply(data=None):
+    data = data or {}
+    event_id = data.get("event_id", "")
+    reply_text = (data.get("reply_text") or "").strip()
+    if not event_id:
+        return
+    if not _monitor:
+        emit("ai_reply_sent", {"event_id": event_id, "ok": False, "err": "值守未运行"})
+        return
+    _monitor.enqueue_send(event_id, reply_text)
+
+
+@socketio.on("skip_monitor_reply")
+def on_skip_monitor_reply(data=None):
+    data = data or {}
+    event_id = data.get("event_id", "")
+    if not event_id:
+        return
+    if _monitor:
+        _monitor.enqueue_skip(event_id)
+
+
+@app.route("/api/monitor/status", methods=["GET"])
+def api_monitor_status():
+    return jsonify({"status": "ok", "running": _monitor_running})
+
+
 if __name__ == "__main__":
     print("  Boss 直聘 · 自动投递  Web 版（多岗位多账号）")
     print("  启动地址: http://127.0.0.1:5000")
     print("  " + "=" * 40)
     socketio.run(app, host="127.0.0.1", port=5000, debug=False, allow_unsafe_werkzeug=True)
-
-
-
-
