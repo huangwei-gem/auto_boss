@@ -232,7 +232,7 @@ def flatten_jobs_for_run(cfg: dict) -> list[dict]:
                 "scroll_pages": job.get("scroll_pages", 5),
                 "greeting_message": job.get("greeting_message", DEFAULT_GREETING),
                 "cookie_file": acc.get("cookie_file", "zhipin_cookies.json"),
-                "image_files": acc.get("image_files", []),
+                "image_files": job.get("image_files", []),
                 "message_interval_min": acc.get("message_interval_min", 3),
                 "message_interval_max": acc.get("message_interval_max", 8),
                 "browser": cfg.get("browser", {}),

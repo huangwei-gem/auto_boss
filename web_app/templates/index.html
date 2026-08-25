@@ -4,8 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Boss直聘 · 智能投递助手</title>
-<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><defs><linearGradient id=%22g%22 x1=%220%%22 y1=%220%%22 x2=%22100%%22 y2=%22100%%22><stop offset=%220%%22 stop-color=%22%234a7cff%22/><stop offset=%22100%%22 stop-color=%22%231e4bd2%22/></linearGradient></defs><rect width=%22100%22 height=%22100%22 rx=%2220%22 fill=%22url(%23g)%22/><text x=%2250%22 y=%2265%22 text-anchor=%22middle%22 font-size=%2250%22 font-weight=%22bold%22 fill=%22%23fff%22 font-family=%22Arial%22>B</text></svg>">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><defs><linearGradient id=%22g%22 x1=%220%%22 y1=%220%%22 x2=%22100%%22 y2=%22100%%22><stop offset=%220%%22 stop-color=%22%235b7cfa%22/><stop offset=%22100%%22 stop-color=%22%231e4bd2%22/></linearGradient></defs><rect width=%22100%22 height=%22100%22 rx=%2220%22 fill=%22url(%23g)%22/><text x=%2250%22 y=%2265%22 text-anchor=%22middle%22 font-size=%2250%22 font-weight=%22bold%22 fill=%22%23fff%22 font-family=%22Arial%22>B</text></svg>">
 <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/animejs@3.2.2/lib/anime.min.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400;14..32,500;14..32,600;14..32,700&display=swap" rel="stylesheet">
@@ -16,37 +17,41 @@
 
 /* Light Theme - default when no data-theme set */
 [data-theme="light"], :root{
-  --bg:#f5f6fa;--surface:#ffffff;--surface-soft:#f0f1f5;--surface-hover:#e8e9ee;
-  --accent:#4a7cff;--accent-light:#e8eeff;--accent-hover:#3a6ae8;
-  --success:#10b981;--success-bg:#d1fae5;--warning:#f59e0b;--warning-bg:#fef3c7;
-  --danger:#ef4444;--danger-bg:#fee2e2;--info:#3b82f6;--info-bg:#dbeafe;
-  --fg:#1e1e2e;--fg-2nd:#5a5d6e;--fg-3rd:#8b8fa0;--fg-4th:#b0b4c4;
-  --bd:#e2e4ea;--bd-2:#d0d2da;
-  --sh-sm:0 1px 2px rgba(0,0,0,.04);--sh:0 1px 3px rgba(0,0,0,.06),0 1px 2px rgba(0,0,0,.04);
-  --sh-md:0 4px 16px rgba(0,0,0,.08);--sh-lg:0 8px 32px rgba(0,0,0,.12);
-  --side-bg:#ffffff;
-  --side-text:#1e1e2e;--side-input-bg:rgba(0,0,0,.03);--side-input-bd:rgba(0,0,0,.06);
-  --side-label:rgba(0,0,0,.25);
-  --chip-bg:#e8eeff;--chip-text:#4a7cff;--chip-del:rgba(74,124,255,.3);
-  --modal-overlay:rgba(0,0,0,.3);--scrollbar-thumb:#d0d2da;
-  --img-checked-bd:#4a7cff;--img-checked-bg:rgba(74,124,255,.08);
+  --r-sm:8px;--r-md:14px;--r-lg:20px;--dur:.2s;--ease:cubic-bezier(.4,0,.2,1);--header-h:56px;
+  --bg:#eef1fb;--surface:rgba(255,255,255,.62);--surface-soft:rgba(255,255,255,.45);--surface-hover:rgba(255,255,255,.8);
+  --accent:#5b7cfa;--accent-light:rgba(91,124,250,.14);--accent-hover:#4365e8;
+  --success:#10b981;--success-bg:rgba(16,185,129,.15);--warning:#f59e0b;--warning-bg:rgba(245,158,11,.15);
+  --danger:#ef4444;--danger-bg:rgba(239,68,68,.14);--info:#3b82f6;--info-bg:rgba(59,130,246,.14);
+  --fg:#23233a;--fg-2nd:#555a70;--fg-3rd:#8b90a3;--fg-4th:#b0b4c4;
+  --bd:rgba(255,255,255,.6);--bd-2:rgba(160,170,220,.35);
+  --sh-sm:0 1px 3px rgba(30,40,80,.06);--sh:0 4px 14px rgba(30,40,80,.07),0 1px 2px rgba(30,40,80,.04);
+  --sh-md:0 8px 28px rgba(30,40,80,.09);--sh-lg:0 20px 60px rgba(30,40,80,.14);
+  --side-bg:rgba(255,255,255,.5);
+  --side-text:#23233a;--side-input-bg:rgba(255,255,255,.5);--side-input-bd:rgba(160,170,220,.25);
+  --side-label:rgba(70,80,120,.45);
+  --chip-bg:rgba(91,124,250,.14);--chip-text:#5b7cfa;--chip-del:rgba(91,124,250,.35);
+  --modal-overlay:rgba(30,40,80,.25);--scrollbar-thumb:rgba(160,170,220,.5);
+  --img-checked-bd:#5b7cfa;--img-checked-bg:rgba(91,124,250,.1);
+  --glass-blur:blur(20px) saturate(160%);
 }
 
 [data-theme="dark"]{
-  --bg:#0f1117;--surface:#1a1d27;--surface-soft:#22252f;--surface-hover:#2a2d38;
-  --accent:#4a7cff;--accent-light:#1e2a4a;--accent-hover:#6b96ff;
-  --success:#34d399;--success-bg:#064e3b;--warning:#fbbf24;--warning-bg:#78350f;
-  --danger:#f87171;--danger-bg:#450a0a;--info:#60a5fa;--info-bg:#1e3a5f;
-  --fg:#f0f2f5;--fg-2nd:#b0b5c0;--fg-3rd:#6b7280;--fg-4th:#4b5563;
-  --bd:#2a2d38;--bd-2:#3b3f4a;
-  --sh-sm:0 1px 2px rgba(0,0,0,.2);--sh:0 1px 3px rgba(0,0,0,.3),0 1px 2px rgba(0,0,0,.2);
-  --sh-md:0 4px 16px rgba(0,0,0,.4);--sh-lg:0 8px 32px rgba(0,0,0,.5);
-  --side-bg:#1a1d27;
-  --side-text:#f0f2f5;--side-input-bg:rgba(255,255,255,.05);--side-input-bd:rgba(255,255,255,.08);
-  --side-label:rgba(255,255,255,.35);
-  --chip-bg:#1e2a4a;--chip-text:#4a7cff;--chip-del:rgba(74,124,255,.3);
-  --modal-overlay:rgba(0,0,0,.6);--scrollbar-thumb:#3b3f4a;
-  --img-checked-bd:#4a7cff;--img-checked-bg:rgba(74,124,255,.12);
+  --r-sm:8px;--r-md:14px;--r-lg:20px;--dur:.2s;--ease:cubic-bezier(.4,0,.2,1);--header-h:56px;
+  --bg:#0f1220;--surface:rgba(30,34,54,.6);--surface-soft:rgba(255,255,255,.05);--surface-hover:rgba(255,255,255,.09);
+  --accent:#6b96ff;--accent-light:rgba(107,150,255,.16);--accent-hover:#8aadff;
+  --success:#34d399;--success-bg:rgba(52,211,153,.16);--warning:#fbbf24;--warning-bg:rgba(251,191,36,.16);
+  --danger:#f87171;--danger-bg:rgba(248,113,113,.16);--info:#60a5fa;--info-bg:rgba(96,165,250,.16);
+  --fg:#eef0f8;--fg-2nd:#b3b9cc;--fg-3rd:#7a8098;--fg-4th:#545a70;
+  --bd:rgba(255,255,255,.09);--bd-2:rgba(255,255,255,.16);
+  --sh-sm:0 1px 3px rgba(0,0,0,.3);--sh:0 4px 14px rgba(0,0,0,.35),0 1px 2px rgba(0,0,0,.3);
+  --sh-md:0 8px 28px rgba(0,0,0,.45);--sh-lg:0 20px 60px rgba(0,0,0,.55);
+  --side-bg:rgba(22,25,40,.55);
+  --side-text:#eef0f8;--side-input-bg:rgba(255,255,255,.06);--side-input-bd:rgba(255,255,255,.1);
+  --side-label:rgba(255,255,255,.4);
+  --chip-bg:rgba(107,150,255,.18);--chip-text:#6b96ff;--chip-del:rgba(107,150,255,.35);
+  --modal-overlay:rgba(0,0,0,.6);--scrollbar-thumb:rgba(255,255,255,.18);
+  --img-checked-bd:#6b96ff;--img-checked-bg:rgba(107,150,255,.14);
+  --glass-blur:blur(20px) saturate(140%);
 }
 
 /* Theme transitions */
@@ -57,6 +62,16 @@ body{transition:background-color .3s ease,color .3s ease}
 html,body{height:100%}
 body{transition:background-color .3s ease,color .3s ease}
 body{font-family:Inter,-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Helvetica Neue,Arial,Noto Sans SC,sans-serif;font-size:13.5px;line-height:1.55;background:var(--bg);color:var(--fg);display:flex;overflow:hidden;-webkit-font-smoothing:antialiased}
+body{background:
+  radial-gradient(1100px 700px at 8% -5%, rgba(120,150,255,.16), transparent 60%),
+  radial-gradient(900px 650px at 108% 10%, rgba(255,170,210,.18), transparent 55%),
+  radial-gradient(1000px 800px at 50% 120%, rgba(120,240,220,.14), transparent 60%),
+  var(--bg);}
+[data-theme="dark"] body{background:
+  radial-gradient(1100px 700px at 8% -5%, rgba(90,120,255,.22), transparent 60%),
+  radial-gradient(900px 650px at 108% 10%, rgba(200,110,190,.18), transparent 55%),
+  radial-gradient(1000px 800px at 50% 120%, rgba(60,190,180,.14), transparent 60%),
+  var(--bg);}
 button{cursor:pointer;border:none;background:none;font:inherit;color:inherit}
 input,textarea,select{font:inherit;color:inherit;outline:none;border:none;background:transparent;width:100%}
 ::selection{background:var(--accent);color:#fff}
@@ -68,9 +83,9 @@ a{color:var(--accent);text-decoration:none}
 
 /* Layout */
 .app{display:flex;width:100%;height:100%}
-.side{flex:0 0 360px;display:flex;flex-direction:column;background:var(--side-bg);color:var(--side-text);position:relative;z-index:10;border-right:1px solid var(--bd);overflow:hidden}
+.side{flex:0 0 360px;display:flex;flex-direction:column;background:var(--side-bg);color:var(--side-text);position:relative;z-index:10;border-right:1px solid var(--bd);overflow:hidden;-webkit-backdrop-filter:var(--glass-blur);backdrop-filter:var(--glass-blur)}
 .side-head{display:flex;align-items:center;gap:10px;padding:14px 18px;border-bottom:1px solid var(--side-input-bd);flex-shrink:0}
-.side-head .logo-wrap{width:32px;height:32px;border-radius:8px;background:linear-gradient(135deg,#4a7cff,#1e4bd2);display:flex;align-items:center;justify-content:center;color:#fff;font-size:18px;flex-shrink:0;box-shadow:0 2px 8px rgba(30,75,210,.4);transition:transform .2s ease}.side-head .logo-wrap:hover{transform:scale(1.1)}
+.side-head .logo-wrap{width:32px;height:32px;border-radius:10px;background:linear-gradient(135deg,#5b7cfa,#8a6bfa);display:flex;align-items:center;justify-content:center;color:#fff;font-size:18px;flex-shrink:0;box-shadow:0 2px 12px rgba(91,124,250,.35);transition:transform .2s ease,box-shadow .2s ease}.side-head .logo-wrap:hover{transform:scale(1.1);box-shadow:0 4px 20px rgba(91,124,250,.5)}
 .side-head .logo-text{font-size:14px;font-weight:600;flex:1;letter-spacing:-.02em}
 .side-head .conn-badge{font-size:10px;padding:2px 8px;border-radius:10px;font-weight:500;background:var(--success-bg);color:var(--success)}
 .side-head .conn-badge.disconnected{background:var(--danger-bg);color:var(--danger)}
@@ -93,17 +108,17 @@ a{color:var(--accent);text-decoration:none}
 .adv-group-title{font-size:10px;font-weight:600;color:var(--side-label);text-transform:uppercase;letter-spacing:.04em;padding:4px 0 2px;border-bottom:1px solid var(--side-input-bd)}
 
 /* Account tabs */
-.account-tab{display:inline-block;padding:5px 10px;font-size:11.5px;font-weight:500;border-radius:4px;background:var(--side-input-bg);color:var(--fg-2nd);border:1px solid var(--side-input-bd);transition:all var(--dur) var(--ease);cursor:pointer;margin-right:4px;margin-bottom:4px}
-.account-tab:hover{background:var(--surface-hover);color:var(--fg)}
-.account-tab.active{background:rgba(74,124,255,.15);color:#4a7cff;border-color:rgba(74,124,255,.3)}
+.account-tab{display:inline-block;padding:5px 12px;font-size:11.5px;font-weight:500;border-radius:20px;background:var(--side-input-bg);color:var(--fg-2nd);border:1px solid var(--side-input-bd);transition:all var(--dur) var(--ease);cursor:pointer;margin-right:4px;margin-bottom:4px}
+.account-tab:hover{background:var(--surface-hover);color:var(--fg);box-shadow:var(--sh-sm)}
+.account-tab.active{background:rgba(91,124,250,.15);color:#5b7cfa;border-color:rgba(91,124,250,.32);box-shadow:0 2px 8px rgba(91,124,250,.15)}
 .account-tab .badge{display:inline-block;font-size:9px;padding:1px 5px;border-radius:8px;background:rgba(255,255,255,.1);color:rgba(255,255,255,.5);font-weight:600;margin-left:4px}
-.account-tab.active .badge{background:rgba(74,124,255,.25);color:#4a7cff}
+.account-tab.active .badge{background:rgba(91,124,250,.25);color:#5b7cfa}
 
 /* Forms */
 .side-form-group{display:flex;flex-direction:column;gap:4px}
 .side-form-label{font-size:10.5px;font-weight:500;color:var(--side-label);text-transform:uppercase;letter-spacing:.04em}
-.side-form-input,.side-form-select{font-size:12px;padding:7px 10px;border-radius:4px;background:var(--side-input-bg);border:1px solid var(--side-input-bd);color:var(--fg);transition:all var(--dur) var(--ease)}
-.side-form-input:focus,.side-form-select:focus{border-color:rgba(74,124,255,.5);box-shadow:0 0 0 2px rgba(74,124,255,.15)}
+.side-form-input,.side-form-select{font-size:12px;padding:7px 10px;border-radius:8px;background:var(--side-input-bg);border:1px solid var(--side-input-bd);color:var(--fg);transition:all var(--dur) var(--ease)}
+.side-form-input:focus,.side-form-select:focus{border-color:rgba(91,124,250,.55);box-shadow:0 0 0 3px rgba(91,124,250,.15)}
 .side-form-input::placeholder{color:var(--fg-4th)}
 .side-form-select option{background:var(--surface);color:var(--fg)}
 .acc-field-row{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--fg-2nd)}
@@ -112,20 +127,20 @@ a{color:var(--accent);text-decoration:none}
 /* File upload */
 .file-input-wrap{display:flex;flex:1;gap:4px}
 .file-input-wrap .side-form-input{flex:1}
-.file-btn{flex-shrink:0;padding:6px 10px;font-size:10.5px;font-weight:500;border-radius:4px;background:rgba(74,124,255,.2);color:#4a7cff;border:1px solid rgba(74,124,255,.25);transition:all var(--dur) var(--ease);white-space:nowrap}
-.file-btn:hover{background:rgba(74,124,255,.3)}
+.file-btn{flex-shrink:0;padding:6px 10px;font-size:10.5px;font-weight:500;border-radius:4px;background:rgba(91,124,250,.2);color:#5b7cfa;border:1px solid rgba(91,124,250,.25);transition:all var(--dur) var(--ease);white-space:nowrap}
+.file-btn:hover{background:rgba(91,124,250,.32)}
 
 /* Toggle switch */
-.toggle-switch{position:relative;display:inline-block;width:32px;height:18px;border-radius:9px;background:var(--bd-2);cursor:pointer;transition:all var(--dur) var(--ease);flex-shrink:0}
-.toggle-switch::after{content:"";position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:#fff;transition:all var(--dur) var(--ease);box-shadow:0 1px 2px rgba(0,0,0,.2)}
+.toggle-switch{position:relative;display:inline-block;width:36px;height:20px;border-radius:10px;background:var(--bd-2);cursor:pointer;transition:all var(--dur) var(--ease);flex-shrink:0}
+.toggle-switch::after{content:"";position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:#fff;transition:all .25s cubic-bezier(.4,0,.2,1);box-shadow:0 1px 3px rgba(0,0,0,.18)}
 .toggle-switch.on{background:var(--accent)}
-.toggle-switch.on::after{left:16px;background:#4a7cff}
+.toggle-switch.on::after{left:18px;background:#fff;box-shadow:0 2px 6px rgba(91,124,250,.35)}
 
 /* Buttons */
 .side-btn-row{display:flex;gap:6px;align-items:center}
 .side-btn{display:inline-flex;align-items:center;justify-content:center;gap:4px;padding:6px 12px;font-size:11px;font-weight:500;border-radius:4px;transition:all var(--dur) var(--ease);white-space:nowrap}
-.side-btn-ghost{background:var(--side-input-bg);color:var(--fg-2nd);border:1px solid var(--side-input-bd)}
-.side-btn-ghost:hover{background:var(--surface-hover);color:var(--fg)}
+.side-btn-ghost{background:var(--side-input-bg);color:var(--fg-2nd);border:1px solid var(--side-input-bd);border-radius:8px;box-shadow:inset 0 1px 0 rgba(255,255,255,.4)}
+.side-btn-ghost:hover{background:var(--surface-hover);color:var(--fg);box-shadow:var(--sh)}
 .side-btn-sm{padding:4px 8px;font-size:10px}
 .side-btn-danger{color:var(--danger)!important}
 .side-btn-block{width:100%}
@@ -145,7 +160,8 @@ a{color:var(--accent);text-decoration:none}
 
 /* Chips */
 .chip-list{display:flex;flex-wrap:wrap;gap:4px;margin-top:4px;min-height:22px}
-.chip{display:inline-flex;align-items:center;gap:4px;padding:3px 8px;font-size:10px;border-radius:12px;background:var(--chip-bg);color:var(--chip-text);max-width:100%;transition:all var(--dur) var(--ease)}
+.chip{display:inline-flex;align-items:center;gap:4px;padding:3px 8px;font-size:10px;border-radius:12px;background:var(--chip-bg);color:var(--chip-text);max-width:100%;transition:all var(--dur) var(--ease);animation:chipIn .3s cubic-bezier(.34,1.56,.64,1)}
+@keyframes chipIn{from{opacity:0;transform:scale(.8)}to{opacity:1;transform:scale(1)}}
 .chip .chip-remove{cursor:pointer;font-size:12px;line-height:1;opacity:.6;transition:opacity var(--dur) var(--ease);margin-left:2px;color:var(--chip-del)}
 .chip .chip-remove:hover{opacity:1}
 
@@ -163,7 +179,7 @@ a{color:var(--accent);text-decoration:none}
 
 /* Main area */
 .main{flex:1;display:flex;flex-direction:column;overflow:hidden;position:relative}
-.topbar{display:flex;align-items:center;padding:0 24px;height:var(--header-h);border-bottom:1px solid var(--bd);background:var(--surface);flex-shrink:0;gap:12px}
+.topbar{display:flex;align-items:center;padding:0 24px;height:var(--header-h);border-bottom:1px solid var(--bd);background:var(--surface);flex-shrink:0;gap:12px;-webkit-backdrop-filter:var(--glass-blur);backdrop-filter:var(--glass-blur)}
 .topbar-title{font-size:15px;font-weight:600;letter-spacing:-.02em}
 .topbar-title .highlight{color:var(--accent)}
 .topbar-task{font-size:11px;color:var(--fg-3rd);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -171,15 +187,15 @@ a{color:var(--accent);text-decoration:none}
 .topbar-badge{font-size:9px;font-weight:600;padding:2px 8px;border-radius:4px;background:var(--accent-light);color:var(--accent);letter-spacing:.02em}
 
 /* Theme toggle button */
-.theme-toggle{display:flex;align-items:center;gap:5px;padding:5px 10px;border-radius:6px;background:var(--surface-soft);border:1px solid var(--bd);transition:all var(--dur) var(--ease);font-size:11px;font-weight:500;color:var(--fg-2nd)}
-.theme-toggle:hover{background:var(--surface-hover);color:var(--fg)}
+.theme-toggle{display:flex;align-items:center;gap:5px;padding:5px 10px;border-radius:10px;background:var(--surface-soft);border:1px solid var(--bd);transition:all var(--dur) var(--ease);font-size:11px;font-weight:500;color:var(--fg-2nd);-webkit-backdrop-filter:var(--glass-blur);backdrop-filter:var(--glass-blur)}
+.theme-toggle:hover{background:var(--surface-hover);color:var(--fg);box-shadow:var(--sh);transform:translateY(-1px)}
 .theme-toggle .toggle-icon{font-size:14px;line-height:1}
 
 /* Content */
 .content{flex:1;overflow-y:auto;padding:20px 24px;display:flex;flex-direction:column;gap:16px}
 .stats-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
-.stat-card{padding:16px 18px;border-radius:var(--r-md);background:var(--surface);border:1px solid var(--bd);box-shadow:var(--sh-sm);transition:all var(--dur) var(--ease)}
-.stat-card:hover{box-shadow:var(--sh);border-color:var(--bd-2)}
+.stat-card{padding:16px 18px;border-radius:16px;background:var(--surface);border:1px solid var(--bd);box-shadow:var(--sh-sm);transition:all var(--dur) var(--ease);-webkit-backdrop-filter:var(--glass-blur);backdrop-filter:var(--glass-blur)}
+.stat-card:hover{box-shadow:var(--sh-md);border-color:var(--bd-2);transform:translateY(-2px)}
 .stat-card.accent{border-left:3px solid var(--accent)}
 .stat-card.success{border-left:3px solid var(--success)}
 .stat-card.warning{border-left:3px solid var(--warning)}
@@ -189,18 +205,20 @@ a{color:var(--accent);text-decoration:none}
 .stat-sub{font-size:11px;color:var(--fg-3rd)}
 
 /* Button variants */
-.btn{display:inline-flex;align-items:center;justify-content:center;gap:4px;padding:8px 16px;font-size:12px;font-weight:500;border-radius:var(--r-sm);transition:all var(--dur) var(--ease);white-space:nowrap}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:4px;padding:8px 16px;font-size:12px;font-weight:500;border-radius:10px;transition:all var(--dur) var(--ease);white-space:nowrap}
 .btn-sm{padding:5px 10px;font-size:11px}
-.btn-success{background:var(--success);color:#fff;box-shadow:0 1px 3px rgba(15,146,66,.2)}
-.btn-success:hover{opacity:.9;box-shadow:0 2px 8px rgba(15,146,66,.3)}
-.btn-danger{background:var(--danger);color:#fff;box-shadow:0 1px 3px rgba(220,38,38,.2)}
-.btn-danger:hover{opacity:.9}
-.btn-ghost{background:var(--surface-soft);color:var(--fg-2nd);border:1px solid var(--bd)}
-.btn-ghost:hover{background:var(--surface-hover);color:var(--fg)}
+.btn-success{background:var(--success);color:#fff;box-shadow:0 2px 8px rgba(16,185,129,.25)}
+.btn-success:hover{filter:brightness(1.05);box-shadow:0 6px 18px rgba(16,185,129,.35);transform:translateY(-1px)}
+.btn-success:active{transform:translateY(0)}
+.btn-danger{background:var(--danger);color:#fff;box-shadow:0 2px 8px rgba(239,68,68,.22)}
+.btn-danger:hover{filter:brightness(1.05);box-shadow:0 6px 18px rgba(239,68,68,.32);transform:translateY(-1px)}
+.btn-danger:active{transform:translateY(0)}
+.btn-ghost{background:var(--surface-soft);color:var(--fg-2nd);border:1px solid var(--bd);-webkit-backdrop-filter:var(--glass-blur);backdrop-filter:var(--glass-blur)}
+.btn-ghost:hover{background:var(--surface-hover);color:var(--fg);box-shadow:var(--sh);transform:translateY(-1px)}
 
 /* Panels */
 .panel-row{display:flex;gap:16px;flex:1;min-height:0}
-.panel{display:flex;flex-direction:column;background:var(--surface);border:1px solid var(--bd);border-radius:var(--r-md);box-shadow:var(--sh-sm);overflow:hidden}
+.panel{display:flex;flex-direction:column;background:var(--surface);border:1px solid var(--bd);border-radius:16px;box-shadow:var(--sh-sm);overflow:hidden;-webkit-backdrop-filter:var(--glass-blur);backdrop-filter:var(--glass-blur)}
 .panel-half{flex:1}
 .panel-header{display:flex;align-items:center;padding:12px 16px;border-bottom:1px solid var(--bd);flex-shrink:0;gap:6px}
 .panel-icon{font-size:14px}
@@ -209,11 +227,15 @@ a{color:var(--accent);text-decoration:none}
 .panel-body{flex:1;overflow-y:auto;padding:8px 12px}
 
 /* Job list */
-.job-item{display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:var(--r-sm);border:1px solid var(--bd);margin-bottom:6px;transition:all var(--dur) var(--ease);cursor:pointer}
-.job-item:hover{background:var(--surface-soft);border-color:var(--bd-2)}
+.job-item{display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:var(--r-sm);border:1px solid var(--bd);background:var(--surface-soft);margin-bottom:6px;transition:all var(--dur) var(--ease);cursor:pointer}
+.job-item:hover{background:var(--surface-hover);border-color:var(--bd-2);box-shadow:var(--sh);transform:translateY(-1px)}
 .job-item .job-info{flex:1;min-width:0}
 .job-item .job-query{font-size:13px;font-weight:500;color:var(--fg)}
 .job-item .job-city{font-size:10px;color:var(--fg-3rd);margin-top:1px}
+.job-thumbs{display:flex;gap:4px;margin-top:6px;flex-wrap:wrap}
+.job-thumbs img{width:40px;height:30px;object-fit:cover;border-radius:6px;border:1px solid var(--bd);cursor:pointer;transition:transform var(--dur) var(--ease)}
+.job-thumbs img:hover{transform:scale(1.15)}
+.job-thumbs-more{font-size:10px;color:var(--fg-3rd);align-self:center;margin-left:2px}
 .job-item .job-badge{font-size:9px;padding:2px 6px;border-radius:3px;background:var(--accent-light);color:var(--accent);font-weight:500}
 .job-item .job-del{font-size:14px;color:var(--fg-4th);cursor:pointer;padding:2px 4px;border-radius:3px;transition:all var(--dur) var(--ease)}
 .job-item .job-del:hover{color:var(--danger);background:var(--danger-bg)}
@@ -235,7 +257,7 @@ a{color:var(--accent);text-decoration:none}
 
 /* Modal */
 .modal-overlay{position:fixed;inset:0;background:var(--modal-overlay);z-index:1000;display:flex;align-items:center;justify-content:center;animation:fadeIn .15s ease}
-.modal{background:var(--surface);border-radius:var(--r-lg);padding:24px;width:520px;max-width:90vw;max-height:80vh;overflow-y:auto;box-shadow:var(--sh-lg);border:1px solid var(--bd);animation:slideUp .2s ease}
+.modal{background:var(--surface);border-radius:20px;padding:24px;width:520px;max-width:90vw;max-height:80vh;overflow-y:auto;box-shadow:var(--sh-lg);border:1px solid var(--bd);animation:slideUp .2s ease;-webkit-backdrop-filter:var(--glass-blur);backdrop-filter:var(--glass-blur)}
 .modal h3{font-size:15px;font-weight:600;margin-bottom:16px;color:var(--fg)}
 .modal-field{margin-bottom:12px}
 .modal-field label{display:block;font-size:11px;font-weight:500;color:var(--fg-2nd);margin-bottom:4px}
@@ -243,8 +265,11 @@ a{color:var(--accent);text-decoration:none}
 .modal-field input:focus,.modal-field textarea:focus,.modal-field select:focus{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-light)}
 .modal-field textarea{min-height:80px;resize:vertical}
 .modal-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:16px}
-.btn-primary{background:var(--accent);color:#fff;box-shadow:0 1px 3px rgba(30,75,210,.2)}
-.btn-primary:hover{background:var(--accent-hover);box-shadow:0 2px 8px rgba(30,75,210,.3)}
+.btn-primary{background:var(--accent);color:#fff;box-shadow:0 2px 8px rgba(91,124,250,.25);position:relative;overflow:hidden}
+.btn-primary:hover{background:var(--accent-hover);box-shadow:0 6px 20px rgba(91,124,250,.35);transform:translateY(-1px)}
+.btn-primary:active{transform:translateY(0)}
+.btn-primary::after{content:"";position:absolute;top:-50%;left:-50%;width:200%;height:200%;background:linear-gradient(45deg,transparent 30%,rgba(255,255,255,.15) 50%,transparent 70%);transform:translateX(-100%);transition:transform .6s ease}
+.btn-primary:hover::after{transform:translateX(40%)}
 .btn-cancel{background:var(--surface-soft);color:var(--fg-2nd);border:1px solid var(--bd)}
 .btn-cancel:hover{background:var(--surface-hover);color:var(--fg)}
 @keyframes fadeIn{from{opacity:0}to{opacity:1}}
@@ -257,8 +282,8 @@ a{color:var(--accent);text-decoration:none}
 /* Login Modal */
 .login-modal-overlay{position:fixed;inset:0;background:var(--modal-overlay);z-index:9999;display:none;align-items:center;justify-content:center;animation:fadeIn .25s ease;-webkit-backdrop-filter:blur(8px) saturate(140%);backdrop-filter:blur(8px) saturate(140%)}
 .login-modal-overlay.active{display:flex}
-.login-modal{position:relative;background:var(--surface);border-radius:18px;padding:0;max-width:440px;width:90%;box-shadow:0 24px 64px rgba(0,0,0,.28),0 0 0 1px var(--bd);border:1px solid var(--bd);animation:modalPop .28s cubic-bezier(.2,.9,.3,1.2);overflow:hidden}
-.login-modal-header{background:linear-gradient(135deg,var(--accent),#1e4bd2);padding:28px 32px 24px;text-align:center;position:relative}
+.login-modal{position:relative;background:var(--surface);border-radius:24px;padding:0;max-width:440px;width:90%;box-shadow:0 24px 64px rgba(0,0,0,.28),0 0 0 1px var(--bd);border:1px solid var(--bd);animation:modalPop .28s cubic-bezier(.2,.9,.3,1.2);overflow:hidden;-webkit-backdrop-filter:var(--glass-blur);backdrop-filter:var(--glass-blur)}
+.login-modal-header{background:linear-gradient(135deg,var(--accent),#7c5bfa);padding:28px 32px 24px;text-align:center;position:relative}
 .login-modal-header::after{content:"";position:absolute;bottom:-12px;left:0;right:0;height:24px;background:var(--surface);border-radius:18px 18px 0 0}
 .login-modal-icon{font-size:42px;line-height:1;margin-bottom:10px;display:inline-block;animation:iconBob 2.2s ease-in-out infinite;filter:drop-shadow(0 2px 8px rgba(0,0,0,.2))}
 .login-modal-title{font-size:18px;font-weight:700;color:#fff;letter-spacing:-.01em;text-shadow:0 1px 3px rgba(0,0,0,.15)}
@@ -304,15 +329,6 @@ a{color:var(--accent);text-decoration:none}
         </div>
         <div class="acc-field-row" style="gap:6px"><label>启用</label><span id="accEnabled" class="toggle-switch on" onclick="toggleAccEnabled()"></span></div>
 
-        <div class="side-section-title" style="margin-top:12px">作品图片 <span class="badge-count" id="imageCountBadge">0</span></div>
-        <div id="imageGrid" class="image-grid"></div>
-        <div id="imageChips" class="chip-list"></div>
-        <div class="side-btn-row" style="margin-top:4px;flex-wrap:wrap">
-          <button class="side-btn side-btn-ghost side-btn-sm" onclick="document.getElementById('imageFileInput').click()"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:2px"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg> 上传图片</button>
-          <input type="file" id="imageFileInput" class="hidden" accept="image/*" multiple onchange="handleImageUpload(event)">
-          <button class="side-btn side-btn-ghost side-btn-sm" onclick="refreshImageList()"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:2px"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg> 刷新</button>
-          <button class="side-btn side-btn-danger side-btn-sm" onclick="deleteAccount(activeAccountIdx)" style="margin-left:auto;font-size:10px;color:var(--danger)">删除此账号</button>
-        </div>
       </div>
       <div>
         <div class="side-section-title">🤖 AI 智能解析 <span class="badge-count" id="aiBadge">关</span></div>
@@ -603,7 +619,6 @@ function loadConfig() {
     renderAiConfig();
     renderJobs();
     updateSbarJobs();
-    refreshImageList();
     addLog('SUCCESS', '配置已加载');
   }).catch(function(e){console.error('loadConfig:',e);addLog('ERROR','加载配置失败: '+e.message);});
 }
@@ -727,8 +742,6 @@ function renderAccountConfig() {
   if (_m1) _m1.value = (a.message_interval_min !== undefined && a.message_interval_min !== null) ? a.message_interval_min : 3;
   var _m2 = document.getElementById('msgIntervalMax');
   if (_m2) _m2.value = (a.message_interval_max !== undefined && a.message_interval_max !== null) ? a.message_interval_max : 8;
-  renderImageChips();
-  renderImageGrid();
 }
 
 function renderJobs() {
@@ -744,7 +757,8 @@ function renderJobs() {
       '<span class="job-toggle toggle-switch'+(j.enabled!==false?' on':'')+'" onclick="event.stopPropagation();toggleJob('+i+')"></span>'+
       '<div class="job-info" onclick="editJob('+i+')">'+
         '<div class="job-query">'+escHtml(j.query||'')+'</div>'+
-        '<div class="job-city">'+escHtml(j.city||'')+(j.scroll_pages?' · '+j.scroll_pages+'页':'')+'</div>'+
+        '<div class="job-city">'+escHtml(j.city||'')+(j.scroll_pages?' · '+j.scroll_pages+'页':'')+(j.image_files&&j.image_files.length?' · 图片'+j.image_files.length:'')+'</div>'+
+        (j.image_files&&j.image_files.length?'<div class="job-thumbs">'+j.image_files.slice(0,3).map(f=>'<img src="/'+f+'" alt="" loading="lazy">').join('')+(j.image_files.length>3?'<span class="job-thumbs-more">+'+(j.image_files.length-3)+'</span>':'')+'</div>':'')+
       '</div>'+
       '<span class="job-badge">'+(j.city||'')+'</span>'+
       '<span class="job-del" onclick="event.stopPropagation();deleteJob('+i+')" title="删除">✕</span>'+
@@ -764,223 +778,6 @@ function updateSbarJobs() {
     el.innerHTML = '<span style="color:var(--fg-3rd);font-size:10px;padding:8px 0;display:block;text-align:center">暂无岗位，点击上方添加</span>';
   }
 }
-
-function renderImageGrid() {
-  const grid = document.getElementById("imageGrid");
-  const a = config.accounts[activeAccountIdx];
-  if (!a) return;
-  const selected = a.image_files || [];
-  if (!availableImages.length) {
-    grid.innerHTML = "<div class="empty-state"><div class="empty-icon">🖼</div><div class="empty-title">暂无作品图片</div><div class="empty-desc">点击「上传图片」选择图片后自动发送给 HR</div></div>";
-    return;
-  }
-  grid.innerHTML = availableImages.map(f => {
-    const name = f.replace(/^dashboard[\\/]/, "").replace(/^dashboard\\//, "");
-    const enc = encodeURIComponent(f);
-    const sel = selected.includes(f) ? " selected" : "";
-    return "<div class="img-item" + sel + "" onclick="toggleImage(\"" + enc + "\")">" +
-      "<div class="img-del-btn" onclick="event.stopPropagation();deleteImageFile(\"" + enc + "\")" title="删除此图片">✖</div>" +
-      "<img src=\"/" + f + "\" alt=\"" + enc + "\" loading=\"lazy\" onerror=\"this.style.display=\"none\"\">" +
-      "<div class="check-overlay">✓</div>" +
-      "<div class="img-name">" + escHtml(name) + "</div>" +
-      "</div>";
-  }).join("");
-}
-function toggleImage(name) {
-  name = decodeURIComponent(name);
-  const a = config.accounts[activeAccountIdx];
-  if (!a) return;
-  if (!a.image_files) a.image_files = [];
-  const idx = a.image_files.indexOf(name);
-  if (idx >= 0) {
-    a.image_files.splice(idx, 1);
-  } else {
-    a.image_files.push(name);
-  }
-  renderImageGrid();
-  renderImageChips();
-  saveConfig();
-}
-function removeImageChip(name) {
-  name = decodeURIComponent(name);
-  const a = config.accounts[activeAccountIdx];
-  if (!a || !a.image_files) return;
-  const i = a.image_files.indexOf(name);
-  if (i >= 0) {
-    a.image_files.splice(i, 1);
-    renderImageGrid();
-    renderImageChips();
-    saveConfig();
-  }
-}function renderImageChips() {
-  const a = config.accounts[activeAccountIdx];
-  const el = document.getElementById("imageChips");
-  if (!a || !a.image_files || !a.image_files.length) {
-    el.innerHTML = "";
-    updateImageCountBadge();
-    return;
-  }
-  el.innerHTML = a.image_files.map(f => {
-    const name = f.replace(/^dashboard[\\/]/, "").replace(/^dashboard\\//, "");
-    const enc = encodeURIComponent(f);
-    return "<span class="chip">" + escHtml(name) + "<span class="chip-del" onclick="event.stopPropagation();removeImageChip(\"" + enc + "\")">✕</span></span>";
-  }).join("");
-  updateImageCountBadge();
-}
-function updateImageCountBadge() {
-  const a = config.accounts[activeAccountIdx];
-  const badge = document.getElementById('imageCountBadge');
-  if (badge) badge.textContent = (a && a.image_files) ? a.image_files.length : 0;
-}
-
-function removeImage(name) {
-  // 委托给 deleteImageFile 统一处理
-  deleteImageFile(name);
-}
-
-function deleteImageFile(name) { 
-  name = decodeURIComponent(name);
-  if (!confirm("确定删除图片文件吗？这将从服务器上彻底删除此图片。")) return;
-  // 提取纯文件名
-  const cleanName = name.replace(/^dashboard[\\/]/, "").replace(/^dashboard\\//, "");
-  fetch("/api/images/delete", {
-    method:"POST",
-    headers:{"Content-Type":"application/json"},
-    body:JSON.stringify({path: cleanName})
-  }).then(r=>r.json()).then(data => {
-    if (data.status === "ok") {
-      addLog("INFO", "已删除图片文件: " + cleanName);
-      const a = config.accounts[activeAccountIdx];
-      if (a && a.image_files) {
-        a.image_files = a.image_files.filter(f => {
-          const fName = f.replace(/^dashboard[\\/]/, "").replace(/^dashboard\\//, "");
-          return fName !== cleanName;
-        });
-      }
-      renderImageGrid();
-      renderImageChips();
-      saveConfig();
-    } else {
-      addLog("ERROR", "删除图片失败: " + (data.message||""));
-    }
-  }).catch(e => addLog("ERROR", "删除图片异常: " + e.message));
-}
-function deleteAllSelectedImages() {
-  const a = config.accounts[activeAccountIdx];
-  if (!a || !a.image_files || !a.image_files.length) {
-    addLog('INFO', '没有已选的图片需要删除');
-    return;
-  }
-  const count = a.image_files.length;
-  if (!confirm('确定删除所有已选的 ' + count + ' 张图片文件吗？这将从服务器上彻底删除这些图片。')) return;
-  const filesToDelete = [...a.image_files];
-  let deleted = 0;
-  let failed = 0;
-  const promises = filesToDelete.map(f => {
-    return fetch('/api/images/delete', {
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({path:f})
-    }).then(r=>r.json()).then(data => {
-      if (data.status === 'ok') deleted++;
-      else failed++;
-    }).catch(() => failed++);
-  });
-  Promise.all(promises).then(() => {
-    addLog('INFO', '批量删除完成: ' + deleted + ' 成功, ' + failed + ' 失败');
-    // 从所有账号中移除已删除的图片
-    for (const acc of config.accounts) {
-      if (acc && acc.image_files) {
-        acc.image_files = acc.image_files.filter(f => !filesToDelete.includes(f));
-      }
-    }
-    saveConfig();
-    refreshImageList();
-  });
-}
-
-function deleteAllImages() {
-  if (!confirm('确定删除所有图片文件吗？此操作不可恢复！')) return;
-  fetch('/api/images/delete', {
-    method:'POST',
-    headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({delete_all:true})
-  }).then(r=>r.json()).then(data => {
-    if (data.status === 'ok') {
-      addLog('INFO', '已删除全部 ' + (data.deleted || 0) + ' 张图片');
-      for (const acc of config.accounts) {
-        if (acc && acc.image_files) {
-          acc.image_files = [];
-        }
-      }
-      saveConfig();
-      refreshImageList();
-    } else {
-      addLog('ERROR', '删除失败: ' + (data.message||''));
-    }
-  }).catch(e => addLog('ERROR', '删除异常: ' + e.message));
-}
-
-function handleImageUpload(event) {
-  const files = event.target.files;
-  if (!files || !files.length) return;
-  const formData = new FormData();
-  for (let i = 0; i < files.length; i++) {
-    formData.append("files", files[i]);
-  }
-  fetch("/api/upload/images", { method:"POST", body: formData })
-    .then(r => r.json())
-    .then(data => {
-      if (data.status === "ok" && data.files) {
-        const a = config.accounts[activeAccountIdx];
-        if (a) {
-          if (!a.image_files) a.image_files = [];
-          for (let f of data.files) {
-            if (!a.image_files.includes(f)) {
-              a.image_files.push(f);
-            }
-          }
-        }
-        addLog("SUCCESS", "已上传 " + data.files.length + " 张图片");
-        refreshImageList();
-        saveConfig();
-      } else {
-        addLog("ERROR", "上传失败: " + (data.message || ""));
-      }
-    })
-    .catch(e => addLog("ERROR", "上传异常: " + e.message));
-  event.target.value = "";
-}
-function cleanupStaleImages() {
-  fetch('/api/images/list')
-    .then(r => r.json())
-    .then(data => {
-      if (data.status !== 'ok') return;
-      const existingImages = data.images || [];
-      let changed = false;
-      for (const acc of config.accounts) {
-        if (acc && acc.image_files && acc.image_files.length) {
-          const filtered = acc.image_files.filter(f => existingImages.includes(f));
-          if (filtered.length !== acc.image_files.length) {
-            acc.image_files = filtered;
-            changed = true;
-          }
-        }
-      }
-      if (changed) saveConfig();
-    })
-    .catch(() => {});
-}
-
-function refreshImageList() {
-  cleanupStaleImages();
-  fetch('/api/images/list')
-    .then(r=>r.json())
-    .then(data => { if (data.status === 'ok') { availableImages = data.images; renderImageGrid(); renderImageChips(); } })
-    .catch(()=>{});
-}
-
-
 
 function switchAccount(i) { activeAccountIdx = i; renderAccounts(); renderAccountConfig(); renderJobs(); updateSbarJobs(); }
 
@@ -1039,17 +836,76 @@ function showJobModal(job) {
       '<div class="modal-field"><label>搜索关键词</label><input id="modalQuery" value="'+escHtml(job.query||'')+'" placeholder="例如: AI产品经理"></div>'+
       '<div class="modal-field"><label>翻页数</label><input id="modalPages" type="number" value="'+(job.scroll_pages||5)+'" min="1" max="20"></div>'+
       '<div class="modal-field"><label>打招呼消息</label><textarea id="modalGreeting" placeholder="输入自定义打招呼消息" style="min-height:80px">'+escHtml(job.greeting_message||defaultGreeting)+'</textarea></div>'+
+      '<div class="modal-field"><label>作品图片</label>'+
+        '<div class="side-btn-row" style="flex-wrap:wrap;margin-bottom:6px">'+
+          '<button class="side-btn side-btn-ghost side-btn-sm" onclick="document.getElementById(\'jobImageInput\').click()">上传图片</button>'+
+          '<input type="file" id="jobImageInput" class="hidden" accept="image/*" multiple onchange="handleJobImageUpload(event)">'+
+        '</div>'+
+        '<div id="jobImageChips" class="chip-list"></div>'+
+      '</div>'+
       '<div class="modal-actions">'+
         '<button class="btn btn-primary" onclick="saveJobModal()">'+(editingJobIdx>=0?'保存':'添加')+'</button>'+
         '<button class="btn btn-cancel" onclick="closeJobModal()">取消</button>'+
       '</div>'+
     '</div>';
   document.body.appendChild(overlay);
+  if (typeof renderJobImageChips === 'function') renderJobImageChips();
 }
 
 function closeJobModal() {
   const m = document.getElementById('jobModal');
   if (m) m.remove();
+}
+
+function handleJobImageUpload(event) {
+  const files = event.target.files;
+  if (!files || !files.length) return;
+  const formData = new FormData();
+  for (let i = 0; i < files.length; i++) {
+    formData.append('files', files[i]);
+  }
+  fetch('/api/upload/images', { method:'POST', body: formData })
+    .then(r => r.json())
+    .then(data => {
+      if (data.status === 'ok' && data.files) {
+        const a = config.accounts[activeAccountIdx];
+        if (a && a.jobs && a.jobs[editingJobIdx]) {
+          if (!a.jobs[editingJobIdx].image_files) a.jobs[editingJobIdx].image_files = [];
+          a.jobs[editingJobIdx].image_files.push(...data.files);
+          renderJobImageChips();
+        }
+      }
+    })
+    .catch(() => {});
+  event.target.value = '';
+}
+
+function renderJobImageChips() {
+  const el = document.getElementById('jobImageChips');
+  if (!el) return;
+  const a = config.accounts[activeAccountIdx];
+  const job = a && a.jobs && a.jobs[editingJobIdx];
+  if (!job || !job.image_files || !job.image_files.length) {
+    el.innerHTML = '';
+    return;
+  }
+  el.innerHTML = job.image_files.map(f => {
+    const name = f.replace(/^dashboard[\/]/, '');
+    const enc = encodeURIComponent(f);
+    return '<span class="chip">'+escHtml(name)+'<span class="chip-remove" onclick="event.stopPropagation();removeImageChipForJob(\''+enc+'\')\">✕</span></span>';
+  }).join('');
+}
+
+function removeImageChipForJob(name) {
+  name = decodeURIComponent(name);
+  const a = config.accounts[activeAccountIdx];
+  if (!a || !a.jobs || !a.jobs[editingJobIdx] || !a.jobs[editingJobIdx].image_files) return;
+  const i = a.jobs[editingJobIdx].image_files.indexOf(name);
+  if (i >= 0) {
+    a.jobs[editingJobIdx].image_files.splice(i, 1);
+    renderJobImageChips();
+    saveConfig();
+  }
 }
 
 function saveJobModal() {
@@ -1063,9 +919,12 @@ function saveJobModal() {
   if (!a.jobs) a.jobs = [];
   const job = { enabled:true, city, query, scroll_pages:pages, greeting_message:greeting };
   if (editingJobIdx >= 0 && editingJobIdx < a.jobs.length) {
+    const old = a.jobs[editingJobIdx];
+    job.image_files = old.image_files || [];
     a.jobs[editingJobIdx] = job;
     addLog('INFO', '岗位已更新: ' + query);
   } else {
+    job.image_files = [];
     a.jobs.push(job);
     addLog('INFO', '岗位已添加: ' + query);
   }
@@ -1321,6 +1180,86 @@ function deleteCookieFile() {
   }).catch(e => addLog("ERROR", "删除异常: " + e.message));
 }
 
+/* ===== anime.js entrance animations ===== */
+document.addEventListener('DOMContentLoaded', function() {
+  if (typeof anime === 'undefined') return;
+
+  // Sidebar sections stagger in
+  anime({
+    targets: '.side-scroll > div',
+    opacity: [0, 1],
+    translateX: [-20, 0],
+    duration: 500,
+    delay: anime.stagger(80, {start: 200}),
+    easing: 'easeOutCubic'
+  });
+
+  // Stat cards bounce in
+  anime({
+    targets: '.stat-card',
+    opacity: [0, 1],
+    translateY: [30, 0],
+    scale: [0.95, 1],
+    duration: 600,
+    delay: anime.stagger(100, {start: 400}),
+    easing: 'easeOutBack'
+  });
+
+  // Panels slide up
+  anime({
+    targets: '.panel',
+    opacity: [0, 1],
+    translateY: [40, 0],
+    duration: 700,
+    delay: anime.stagger(120, {start: 600}),
+    easing: 'easeOutQuart'
+  });
+
+  // Topbar fade in
+  anime({
+    targets: '.topbar',
+    opacity: [0, 1],
+    translateY: [-10, 0],
+    duration: 400,
+    delay: 100,
+    easing: 'easeOutCubic'
+  });
+
+  // Logo pulse on load
+  anime({
+    targets: '.logo-wrap',
+    scale: [0.8, 1],
+    rotate: ['-8deg', '0deg'],
+    duration: 600,
+    delay: 150,
+    easing: 'easeOutBack'
+  });
+
+  // Stat value counter animation (triggered when config loads)
+  var origLoadConfig = window._origLoadConfig;
+  if (!origLoadConfig) {
+    window._origLoadConfig = true;
+    // Observe stat value changes and animate
+    var observer = new MutationObserver(function(mutations) {
+      mutations.forEach(function(m) {
+        if (m.target.classList && m.target.classList.contains('stat-value')) {
+          var val = parseInt(m.target.textContent);
+          if (!isNaN(val) && val > 0) {
+            anime({
+              targets: m.target,
+              scale: [1.2, 1],
+              duration: 400,
+              easing: 'easeOutBack'
+            });
+          }
+        }
+      });
+    });
+    document.querySelectorAll('.stat-value').forEach(function(el) {
+      observer.observe(el, {childList: true, characterData: true, subtree: true});
+    });
+  }
+});
 
 </script>
 <!-- Login Modal -->
