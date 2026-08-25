@@ -12,7 +12,6 @@ __pycache__/
 *.bak_pre_final
 *.egg-info/
 *.log
-*.txt
 _fix_*
 _check_*.py
 _check_*.js
@@ -45,6 +44,16 @@ env/
 *.current_backup
 
 # ── 敏感文件：包含 API Key / Cookie，禁止提交 ──
+app/data/bot_config.json
+app/data/zhipin_cookies.json
+app/data/ai_cache.json
+app/data/chats_log.json
+app/data/chatted_jobs.json
+app/data/*_cookies.json
+app/data/*.cookie.json
+app/data/jd_analysis/
+
+# 旧路径兼容（迁移后可删）
 web_app/bot_config.json
 web_app/zhipin_cookies.json
 web_app/ai_cache.json

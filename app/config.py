@@ -29,8 +29,10 @@ import json
 import os
 import copy
 
+# app/ 目录；数据文件统一放在 app/data/
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-CONFIG_FILE = os.path.join(BASE_DIR, "bot_config.json")
+DATA_DIR = os.path.join(BASE_DIR, "data")
+CONFIG_FILE = os.path.join(DATA_DIR, "bot_config.json")
 
 DEFAULT_GREETING = (
     "您好，我是双一流的本科，应聘数据分析岗位。在校系统学习数据分析相关知识，"
@@ -67,6 +69,15 @@ DEFAULT_CONFIG = {
         "api_base": "https://apihub.agnes-ai.com/v1",
         "model": "agnes-2.5-flash",
         "match_threshold": 70,
+        "providers": [
+            {
+                "name": "Agnes",
+                "api_key": "",
+                "api_base": "https://apihub.agnes-ai.com/v1",
+                "model": "agnes-2.5-flash",
+                "timeout": 30
+            }
+        ]
     },
     "resume": {
         "school": "",
@@ -168,6 +179,17 @@ def load_config() -> dict:
     # 确保 AI 和 resume 字段存在
     merged.setdefault("ai", copy.deepcopy(DEFAULT_CONFIG["ai"]))
     merged.setdefault("resume", copy.deepcopy(DEFAULT_CONFIG["resume"]))
+
+    # 迁移旧版 AI 配置：如果 providers 为空但顶层有 api_key，自动迁移到 providers[0]
+    ai = merged.get("ai", {})
+    if not ai.get("providers") and ai.get("api_key"):
+        ai["providers"] = [{
+            "name": ai.get("name", "默认"),
+            "api_key": ai.get("api_key", ""),
+            "api_base": ai.get("api_base", "https://apihub.agnes-ai.com/v1"),
+            "model": ai.get("model", "agnes-2.5-flash"),
+            "timeout": 30,
+        }]
 
     return merged
 

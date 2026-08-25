@@ -17,7 +17,7 @@ from urllib.error import URLError
 
 # ── 常量 ──
 
-CACHE_FILE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "web_app", "ai_cache.json")
+CACHE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "ai_cache.json")
 DEFAULT_API_BASE = "https://apihub.agnes-ai.com/v1"
 DEFAULT_MODEL = "agnes-2.5-flash"
 DEFAULT_THRESHOLD = 70

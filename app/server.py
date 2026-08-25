@@ -3,16 +3,20 @@ from typing import Optional
 from flask import Flask, render_template, request, jsonify, send_file, abort
 from flask_socketio import SocketIO, emit
 
+# app/ 目录结构：app/server.py, app/config.py, app/bot_core.py 同级
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_DIR = os.path.dirname(BASE_DIR)
-sys.path.insert(0, PROJECT_DIR)
+DATA_DIR = os.path.join(BASE_DIR, "data")          # 所有运行时数据
+STATIC_DIR = os.path.join(BASE_DIR, "static")      # 静态资源
+DASHBOARD_DIR = os.path.join(STATIC_DIR, "dashboard")  # 作品图片
+# 把 app/ 加到 path，这样 from config / from bot_core 能直接 import
+sys.path.insert(0, BASE_DIR)
 os.chdir(BASE_DIR)
 
 from config import load_config, save_config, validate_config, flatten_jobs_for_run, DEFAULT_GREETING
-sys.path.insert(0, os.path.join(PROJECT_DIR, "core"))
 from bot_core import BotCore
 
-app = Flask(__name__)
+app = Flask(__name__, template_folder="templates", static_folder="static")
 app.config["SECRET_KEY"] = os.urandom(24).hex()
 app.config["TEMPLATES_AUTO_RELOAD"] = True
 app.config["MAX_CONTENT_LENGTH"] = 50 * 1024 * 1024
@@ -265,7 +269,7 @@ def api_add_account():
         idx = len(_config["accounts"])
         cookie_file = data.get("cookie_file", "zhipin_cookies.json")
         # 验证 cookie 文件是否存在，如果不存在则使用默认值
-        cookie_path = os.path.join(BASE_DIR, cookie_file)
+        cookie_path = os.path.join(DATA_DIR, cookie_file)
         if not os.path.isfile(cookie_path):
             cookie_file = "zhipin_cookies.json"
         _config["accounts"].append({
@@ -354,13 +358,12 @@ def api_upload_images():
     files = request.files.getlist("files")
     if not files:
         return jsonify({"status": "error", "message": "未选择文件"}), 400
-    dashboard_dir = os.path.join(BASE_DIR, "dashboard")
-    os.makedirs(dashboard_dir, exist_ok=True)
+    os.makedirs(DASHBOARD_DIR, exist_ok=True)
     uploaded = []
     for f in files:
         if f and f.filename:
             filename = uuid.uuid4().hex[:8] + "_" + f.filename
-            save_path = os.path.join(dashboard_dir, filename)
+            save_path = os.path.join(DASHBOARD_DIR, filename)
             f.save(save_path)
             uploaded.append(f"dashboard/{filename}")
     return jsonify({"status": "ok", "files": uploaded})
@@ -374,7 +377,7 @@ def api_upload_cookie():
     safe_name = os.path.basename(f.filename)
     if not safe_name.endswith(".json"):
         safe_name += ".json"
-    save_path = os.path.join(BASE_DIR, safe_name)
+    save_path = os.path.join(DATA_DIR, safe_name)
     f.save(save_path)
     return jsonify({"status": "ok", "filename": safe_name})
 
@@ -384,20 +387,19 @@ def api_delete_image():
     """删除图片文件（支持单张删除、批量指定删除、全部删除）。"""
     data = request.get_json() or {}
     path = data.get("path", "")
-    # 兼容旧版：如果 path 是 dashboard/ 开头的，加上 web_app 目录
-    dashboard_dir = os.path.join(BASE_DIR, "dashboard")
+    # 兼容旧版：如果 path 是 dashboard/ 开头的，加上 static/dashboard 目录
     if path and not os.path.isabs(path):
-        test_path = os.path.join(dashboard_dir, path)
+        test_path = os.path.join(DASHBOARD_DIR, path)
         if os.path.exists(test_path):
             path = test_path
         # 也尝试直接用 dashboard 目录下的文件名
         elif "/" not in path and "\\" not in path:
-            test_path2 = os.path.join(dashboard_dir, path)
+            test_path2 = os.path.join(DASHBOARD_DIR, path)
             if os.path.exists(test_path2):
                 path = test_path2
     delete_all = data.get("delete_all", False)
     delete_paths = data.get("paths", [])
-    dashboard_dir = os.path.join(BASE_DIR, "dashboard")
+    dashboard_dir = DASHBOARD_DIR
     
     # 批量删除所有图片
     if delete_all:
@@ -549,14 +551,38 @@ def api_default_greeting():
     return jsonify({"status": "ok", "greeting": DEFAULT_GREETING})
 
 
+@app.route("/api/cities", methods=["GET"])
+def api_cities():
+    """返回支持的城市列表（硬编码 + 运行时捕获 + 文件缓存）"""
+    from bot_core import CITY_CODES
+    cities = set(CITY_CODES.keys())
+
+    # 从运行时捕获的数据中添加
+    if _bot and hasattr(_bot, '_city_dict') and _bot._city_dict:
+        cities.update(_bot._city_dict.keys())
+
+    # 从文件缓存中添加
+    city_file = os.path.join(DATA_DIR, "city_dict.json")
+    if os.path.exists(city_file):
+        try:
+            import json
+            with open(city_file, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                if isinstance(data, dict):
+                    cities.update(data.keys())
+        except Exception:
+            pass
+
+    return jsonify({"status": "ok", "cities": sorted(cities)})
+
+
 @app.route("/api/images/list", methods=["GET"])
 def api_images_list():
-    dashboard_dir = os.path.join(BASE_DIR, "dashboard")
-    if not os.path.exists(dashboard_dir):
-        os.makedirs(dashboard_dir, exist_ok=True)
+    if not os.path.exists(DASHBOARD_DIR):
+        os.makedirs(DASHBOARD_DIR, exist_ok=True)
     images = []
-    for fn in sorted(os.listdir(dashboard_dir), reverse=True):
-        fp = os.path.join(dashboard_dir, fn)
+    for fn in sorted(os.listdir(DASHBOARD_DIR), reverse=True):
+        fp = os.path.join(DASHBOARD_DIR, fn)
         if os.path.isfile(fp) and fn.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp')):
             images.append(f"dashboard/{fn}")
     return jsonify({"status": "ok", "images": images})
@@ -564,7 +590,7 @@ def api_images_list():
 
 @app.route("/dashboard/<path:filename>")
 def serve_dashboard(filename):
-    full_path = os.path.join(BASE_DIR, "dashboard", filename)
+    full_path = os.path.join(DASHBOARD_DIR, filename)
     if os.path.exists(full_path) and os.path.isfile(full_path):
         return send_file(full_path)
     return abort(404)
@@ -583,7 +609,7 @@ def api_upload_cookies():
         content_data = f.read().decode("utf-8")
         json.loads(content_data)  # 验证 JSON 格式
         safe_name = os.path.basename(f.filename) if f.filename else "zhipin_cookies.json"
-        dst = os.path.join(BASE_DIR, safe_name)
+        dst = os.path.join(DATA_DIR, safe_name)
         with open(dst, "w", encoding="utf-8") as out:
             out.write(content_data)
         return jsonify({"status": "ok", "filename": safe_name})
@@ -597,7 +623,7 @@ def api_upload_cookies():
 def api_cookies_list():
     """列出可用的 Cookie 文件。"""
     cookies = []
-    for fn in os.listdir(BASE_DIR):
+    for fn in os.listdir(DATA_DIR):
         if fn.endswith(".json") and (fn != "bot_config.json" and fn != "chats_log.json" and fn != "chatted_jobs.json"):
             cookies.append(fn)
     return jsonify({"status": "ok", "cookies": cookies})
@@ -610,7 +636,7 @@ def api_delete_cookie():
     filename = data.get("filename", "")
     if not filename:
         return jsonify({"status": "error", "message": "filename 不能为空"}), 400
-    filepath = os.path.join(BASE_DIR, filename)
+    filepath = os.path.join(DATA_DIR, filename)
     if os.path.exists(filepath) and os.path.isfile(filepath):
         os.remove(filepath)
         return jsonify({"status": "ok"})
@@ -748,7 +774,7 @@ def _get_ai_analyzer():
     ai_cfg = cfg.get("ai", {})
     resume_cfg = cfg.get("resume", {})
     if _ai_analyzer is None:
-        from core.ai_analyzer import AIAnalyzer
+        from ai_analyzer import AIAnalyzer
         _ai_analyzer = AIAnalyzer(
             api_key=ai_cfg.get("api_key", ""),
             api_base=ai_cfg.get("api_base", "https://apihub.agnes-ai.com/v1"),
@@ -871,7 +897,7 @@ def api_ai_cache():
     """查看 AI 分析缓存状态。"""
     try:
         import os
-        cache_file = os.path.join(BASE_DIR, "ai_cache.json")
+        cache_file = os.path.join(DATA_DIR, "ai_cache.json")
         if os.path.exists(cache_file):
             with open(cache_file, "r", encoding="utf-8") as f:
                 cache = json.load(f)
@@ -899,6 +925,33 @@ def api_ai_stats():
         analyzer = _get_ai_analyzer()
         stats = analyzer.get_stats()
         return jsonify({"status": "ok", "stats": stats})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route("/api/excel/files", methods=["GET"])
+def api_excel_files():
+    """获取 Excel 分析文件列表。"""
+    try:
+        from excel_exporter import get_analysis_files
+        files = get_analysis_files()
+        return jsonify({"status": "ok", "files": files})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route("/api/excel/download", methods=["GET"])
+def api_excel_download():
+    """下载指定 Excel 文件。"""
+    try:
+        from flask import send_file
+        filename = request.args.get("filename", "")
+        if not filename or "/" in filename or "\\" in filename:
+            return jsonify({"status": "error", "message": "无效文件名"}), 400
+        filepath = os.path.join(DATA_DIR, "jd_analysis", filename)
+        if not os.path.exists(filepath):
+            return jsonify({"status": "error", "message": "文件不存在"}), 404
+        return send_file(filepath, as_attachment=True)
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 

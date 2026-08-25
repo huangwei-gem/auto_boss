@@ -21,9 +21,23 @@ from DrissionPage.errors import PageDisconnectedError
 # ─────────────────────────────────────────────
 # 路径常量
 # ─────────────────────────────────────────────
-
+_APP_DIR = os.path.dirname(os.path.abspath(__file__))
+DATA_DIR = os.path.join(_APP_DIR, "data")
 COOKIES_FILE = "zhipin_cookies"
-CHATS_LOG_FILE = "chats_log.json"
+CHATS_LOG_FILE = os.path.join(DATA_DIR, "chats_log.json")
+
+# ─────────────────────────────────────────────
+# 文件日志
+# ─────────────────────────────────────────────
+import logging
+LOG_FILE = os.path.join(DATA_DIR, "bot.log")
+os.makedirs(DATA_DIR, exist_ok=True)
+_file_handler = logging.FileHandler(LOG_FILE, encoding="utf-8")
+_file_handler.setFormatter(logging.Formatter("%(asctime)s %(message)s", datefmt="%H:%M:%S"))
+_file_logger = logging.getLogger("bot_file")
+_file_logger.setLevel(logging.INFO)
+_file_logger.addHandler(_file_handler)
+_file_logger.propagate = False
 
 # 默认 User-Agent 列表
 FALLBACK_USER_AGENTS = [
@@ -140,8 +154,12 @@ class BotCore:
         # 岗位列表
         self.jobs = []
 
+        # 投递队列锁（防止并发操作浏览器）
+        self._apply_lock = threading.Lock()
+
         # 从配置读取参数
         self._load_config_params()
+        self._load_city_dict()
         self._tasks = [self.config]
 
     def _load_config_params(self):
@@ -174,6 +192,7 @@ class BotCore:
         self._ai_api_base = ai_cfg.get("api_base", "https://apihub.agnes-ai.com/v1")
         self._ai_model = ai_cfg.get("model", "agnes-2.5-flash")
         self._ai_threshold = ai_cfg.get("match_threshold", 70)
+        self._ai_cfg = ai_cfg
         self._resume_cfg = self.config.get("resume", {})
         self._ai_analyzer = None
 
@@ -193,6 +212,11 @@ class BotCore:
         """统一日志输出。"""
         if self.log_cb:
             self.log_cb(f"[{level}] {msg}")
+        # 同时写入文件日志
+        try:
+            _file_logger.info(f"[{self.account_name}] [{level}] {msg}")
+        except Exception:
+            pass
 
     def _report_progress(self):
         if self.progress_cb:
@@ -322,9 +346,9 @@ class BotCore:
         """检查登录状态，参考 mian.py 流程。"""
         orig_cwd = os.getcwd()
         try:
-            web_app_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "web_app")
-            if os.path.exists(web_app_dir):
-                os.chdir(web_app_dir)
+            data_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
+            if os.path.exists(data_dir):
+                os.chdir(data_dir)
 
             self.dp.get("https://www.zhipin.com")
             self._random_delay(2, 3)
@@ -410,9 +434,34 @@ class BotCore:
                             self._log("INFO", f"城市: {name} -> {code}")
                     if self._city_dict:
                         self._log("SUCCESS", f"已获取 {len(self._city_dict)} 个城市数据")
+                        self._save_city_dict()
                     break
         except Exception as e:
             self._log("WARN", f"城市数据捕获异常: {e}")
+
+    def _save_city_dict(self):
+        """保存城市数据到文件，供前端下拉列表使用。"""
+        try:
+            import json
+            city_file = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "city_dict.json")
+            with open(city_file, "w", encoding="utf-8") as f:
+                json.dump(self._city_dict, f, ensure_ascii=False, indent=2)
+        except Exception:
+            pass
+
+    def _load_city_dict(self):
+        """从文件加载之前捕获的城市数据。"""
+        try:
+            import json
+            city_file = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "city_dict.json")
+            if os.path.exists(city_file):
+                with open(city_file, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                    if isinstance(data, dict):
+                        self._city_dict.update(data)
+                        self._log("INFO", f"已加载 {len(self._city_dict)} 个城市数据(文件)")
+        except Exception:
+            pass
 
 
     def _check_login_expired(self) -> bool:
@@ -592,12 +641,10 @@ class BotCore:
     def _resolve_images(self) -> list:
         """解析作品图片路径。只使用配置的 image_files，不自动扫描 dashboard 目录。"""
         import glob
-        _script_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        web_app_dir = os.path.join(_script_dir, "web_app")
-        web_dashboard = os.path.join(web_app_dir, "dashboard")
-
-        # 确保 dashboard 目录存在
-        os.makedirs(web_dashboard, exist_ok=True)
+        # app/static/dashboard 是作品图目录
+        static_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
+        dashboard_dir = os.path.join(static_dir, "dashboard")
+        os.makedirs(dashboard_dir, exist_ok=True)
 
         resolved = []
 
@@ -606,51 +653,58 @@ class BotCore:
             for img in self._image_files:
                 if isinstance(img, str):
                     if img.startswith("dashboard/") or img.startswith("dashboard\\"):
-                        full_path = os.path.join(web_app_dir, img.replace("\\", "/"))
+                        full_path = os.path.join(static_dir, img.replace("\\", "/"))
                     elif os.path.isabs(img):
                         full_path = img
                     else:
-                        full_path = os.path.join(web_dashboard, img)
+                        full_path = os.path.join(dashboard_dir, img)
                     if os.path.isfile(full_path):
                         resolved.append(full_path)
                     else:
                         self._log("WARN", f"配置图片不存在: {full_path}")
 
-        # 策略2: 扫描 dashboard 目录（兜底）
+        # 兜底：扫描 dashboard 目录
         if not resolved:
-            self._log("INFO", "配置图片未找到，扫描 dashboard 目录...")
             for ext in ["*.png", "*.jpg", "*.jpeg", "*.gif", "*.webp"]:
-                for f in glob.glob(os.path.join(web_dashboard, ext)):
+                for f in glob.glob(os.path.join(dashboard_dir, ext)):
                     resolved.append(f)
-                    self._log("INFO", f"扫描到图片: {os.path.basename(f)}")
 
-        # 去重（保留顺序）
         final_resolved = list(dict.fromkeys(resolved))
-
         if final_resolved:
             self._log("INFO", f"共准备 {len(final_resolved)} 张作品图片")
         else:
             self._log("WARN", "没有作品图片")
-
+        return final_resolved
         return final_resolved
 
 
 
     def _init_ai(self):
-        """初始化 AI 分析器（懒加载）。"""
+        """初始化 AI 分析器（懒加载）。支持多 AI 容灾链。"""
         if self._ai_analyzer is not None:
             return self._ai_analyzer
-        if not self._ai_enabled or not self._ai_api_key:
+        if not self._ai_enabled:
             return None
         try:
-            from ai_analyzer import AIAnalyzer
-            self._ai_analyzer = AIAnalyzer(
-                api_key=self._ai_api_key,
-                api_base=self._ai_api_base,
-                model=self._ai_model,
-                match_threshold=self._ai_threshold,
-                log_callback=lambda msg: self._log("INFO", msg),
-            )
+            # 优先使用多 AI 容灾链
+            providers = self._ai_cfg.get("providers", [])
+            if providers:
+                from ai_analyzer_chain import AIAnalyzerChain
+                self._ai_analyzer = AIAnalyzerChain(
+                    providers=providers,
+                    match_threshold=self._ai_threshold,
+                    log_callback=lambda msg: self._log("INFO", msg),
+                )
+            else:
+                # 单 AI 模式（向后兼容）
+                from ai_analyzer import AIAnalyzer
+                self._ai_analyzer = AIAnalyzer(
+                    api_key=self._ai_api_key,
+                    api_base=self._ai_api_base,
+                    model=self._ai_model,
+                    match_threshold=self._ai_threshold,
+                    log_callback=lambda msg: self._log("INFO", msg),
+                )
             self._ai_analyzer.set_resume(self._resume_cfg)
             self._log("INFO", f"🤖 AI 智能解析已启用（模型: {self._ai_model}，阈值: {self._ai_threshold}）")
             return self._ai_analyzer
@@ -701,7 +755,8 @@ class BotCore:
             self._log("INFO", f"处理 [{idx+1}/{self.total_jobs}] {job.get('job_name', '未知岗位')}")
             self._random_delay(self._min_interval, self._max_interval)
             # AI 智能匹配：不达标的岗位直接跳过
-            if self._ai_enabled and self._ai_api_key:
+            has_ai = self._ai_enabled and (self._ai_api_key or self._ai_cfg.get("providers", []))
+            if has_ai:
                 ai_result = self._analyze_job_with_ai(job)
                 if ai_result is None and self._init_ai() is not None:
                     self._log("WARN", f"🤖 AI 判定不匹配，跳过: {job.get('job_name', '')}")
@@ -711,6 +766,8 @@ class BotCore:
                     continue
                 if ai_result and ai_result.get("suggested_greeting"):
                     self._greeting_message = ai_result["suggested_greeting"]
+            else:
+                ai_result = None
             if self._is_already_chatted(job):
                 self._log("INFO", f"⏭️ 已沟通过: {job.get('job_name', '')}")
                 self.skipped_count += 1
@@ -723,7 +780,7 @@ class BotCore:
                 success = self._apply_job(job)
                 if success:
                     self.applied_count += 1
-                    self._save_chat_log(job, skipped=False)
+                    self._save_chat_log(job, skipped=False, ai_result=ai_result)
                     self._log("SUCCESS", f"✅ 已投递: {job.get('job_name', '')}")
                 else:
                     self.skipped_count += 1
@@ -813,6 +870,12 @@ class BotCore:
         投递一个岗位。
         严格参考源文件 mian.py 流程。
         """
+        # 使用锁防止并发操作浏览器
+        with self._apply_lock:
+            return self._apply_job_inner(job, _disconnect_retry)
+
+    def _apply_job_inner(self, job: dict, _disconnect_retry: int = 0) -> bool:
+        """实际投递逻辑（内部方法）。"""
         if not self.running:
             return False
         url = job.get("url", "")
@@ -833,7 +896,7 @@ class BotCore:
                 pass
 
         try:
-            # ── 1. 导航到岗位详情页（参考源文件：dp.get(url)） ──
+            # ── 1. 导航到岗位详情页（新开 tab） ──
             # 先检查页面是否连接，已断开则尝试恢复
             try:
                 _ = self.dp.url
@@ -846,9 +909,11 @@ class BotCore:
 
             for _retry in range(3):
                 try:
-                    self.dp.get(url)
+                    self._log("INFO", f"[v2] 导航到: {url}")
+                    # 使用 JavaScript 在当前标签页导航（DrissionPage 4.x 的 get() 会打开新标签页）
+                    self.dp.run_js(f"window.location.href = '{url}'")
                     self._random_delay(3, 6)
-                    _ = self.dp.url
+                    self._log("INFO", f"[v2] 导航后URL: {self.dp.url}")
                     break
                 except PageDisconnectedError:
                     self._log("WARN", "页面连接断开，尝试恢复...")
@@ -919,52 +984,47 @@ class BotCore:
             except Exception:
                 pass
 
-            # ── 4. 点击立即沟通（源文件：dp.ele(".btn btn-startchat").click()） ──
-            try:
-                chat_btn.click()
-                self._random_delay(2, 4)
-            except Exception as e:
-                self._log("WARN", "点击沟通按钮失败: " + str(e))
+            # ── 4. 点击立即沟通（严格参考源文件：dp.ele(".btn btn-startchat").click()） ──
+            self._log("INFO", f"[v2] 开始点击沟通按钮... URL: {self.dp.url}")
+            chat_btn = self.dp.ele(".btn btn-startchat", timeout=5)
+            if not chat_btn:
+                self._log("WARN", f"[v2] 未找到沟通按钮! URL: {self.dp.url}")
+                # 检查页面上有没有其他按钮
+                try:
+                    all_btns = self.dp.eles("tag:button") + self.dp.eles(".btn")
+                    self._log("INFO", f"[v2] 页面上的按钮数量: {len(all_btns)}")
+                    for i, b in enumerate(all_btns[:10]):
+                        btext = (b.text or "")[:30]
+                        bclass = b.attr("class") or ""
+                        self._log("INFO", f"  btn[{i}]: class={bclass} text={btext}")
+                except Exception as dbg_e:
+                    self._log("WARN", f"[v2] 获取按钮失败: {dbg_e}")
                 return False
+            self._log("INFO", f"[v2] 找到沟通按钮，文本: {chat_btn.text}")
+            chat_btn.click()
+            self._log("INFO", "[v2] 已点击沟通按钮，等待输入框...")
 
-            # 检查页面是否断开
-            try:
-                _ = self.dp.url
-            except PageDisconnectedError:
-                self._log("WARN", "点击沟通按钮后页面断开，标记已处理")
-                self._mark_chatted(job)
-                return True
-
-            # ── 5. 输入消息（源文件：dp.ele(".input-area").input(message)） ──
+            # ── 5. 输入消息（严格参考源文件：dp.ele(".input-area").input(message)） ──
             greeting = self._greeting_message or "您好，我是双一流的本科，应聘数据分析岗位。在校系统学习数据分析相关知识，掌握Excel、基础SQL与数据整理技能，具备数据思维。做事严谨细心，学习能力强，愿意踏实积累。十分认可贵公司，希望能获得面试机会。"
-            try:
-                input_area = self.dp.ele(".input-area", timeout=5)
-                if input_area:
-                    input_area.input(greeting)
-                    self._random_delay(1, 2)
-                else:
-                    self._log("WARN", "未找到输入框")
-                    # 尝试通过 JS 查找
-                    try:
-                        self.dp.run_js("document.querySelector('.input-area')?.focus()")
-                        self.dp.run_js(f"document.querySelector('.input-area')?.value='{greeting[:50]}'")
-                    except Exception:
-                        pass
-                    return False
-            except Exception as e:
-                self._log("WARN", "输入消息失败: " + str(e))
+            input_area = self.dp.ele(".input-area", timeout=10)
+            if not input_area:
+                self._log("WARN", f"[v2] 未找到输入框! 当前URL: {self.dp.url}")
+                # 打印页面上所有input/textarea元素帮助调试
+                try:
+                    inputs = self.dp.eles("tag:input") + self.dp.eles("tag:textarea") + self.dp.eles("[contenteditable]")
+                    self._log("INFO", f"[v2] 页面上的输入元素: {len(inputs)} 个")
+                    for i, inp in enumerate(inputs[:5]):
+                        self._log("INFO", f"  输入{i}: tag={inp.tag} class={inp.attr('class')} type={inp.attr('type')}")
+                except Exception as dbg_e:
+                    self._log("WARN", f"[v2] 获取输入元素失败: {dbg_e}")
                 return False
+            self._log("INFO", "[v2] 找到输入框，输入消息...")
+            input_area.input(greeting)
+            self._log("INFO", "[v2] 消息已输入")
 
-            # ── 6. 点击发送（源文件：dp.ele(".send-message").click()） ──
-            try:
-                send_btn = self.dp.ele(".send-message", timeout=5)
-                if send_btn:
-                    send_btn.click()
-                else:
-                    self.dp.run_js("document.querySelector('.send-message')?.click()")
-                self._random_delay(1, 2)
-            except Exception as e:
-                self._log("WARN", "发送消息失败: " + str(e))
+            # ── 6. 点击发送（严格参考源文件：dp.ele(".send-message").click()） ──
+            self.dp.ele(".send-message").click()
+            self._random_delay(1, 2)
 
             # 发送后检测页面是否断开
             try:
@@ -983,6 +1043,13 @@ class BotCore:
                 if close_btn:
                     close_btn.click()
                     self._random_delay(1, 2)
+            except Exception:
+                pass
+
+            # ── 关闭当前 tab，回到列表页 ──
+            try:
+                self.dp.close_current_tab()
+                self._random_delay(1, 2)
             except Exception:
                 pass
 
@@ -1057,75 +1124,35 @@ class BotCore:
     def _find_chat_button(self, timeout=5):
         """
         查找沟通按钮。
-        严格参考源文件 mian.py 流程。
-        源文件使用 .btn btn-startchat（DrissionPage AND 语法，空格分隔类名）。
+        严格参考源文件 mian.py：dp.ele(".btn btn-startchat")
         """
         import time as _time
         _time.sleep(1)
 
-        # 1. 文本匹配 —— 最可靠（源文件：dp.ele(".btn btn-startchat").text）
+        # 严格参考源文件：.btn btn-startchat（DrissionPage AND 语法）
+        try:
+            btn = self.dp.ele(".btn btn-startchat", timeout=timeout)
+            if btn:
+                return btn
+        except Exception:
+            pass
+
+        # 备选：文本匹配
         for chat_text in ("立即沟通", "继续沟通"):
             try:
-                btn = self.dp.ele(f"text:{chat_text}", timeout=timeout)
+                btn = self.dp.ele(f"text:{chat_text}", timeout=2)
                 if btn:
                     return btn
             except Exception:
                 pass
-
-        # 2. DrissionPage AND 语法（源文件风格：.btn btn-startchat，空格分隔类名）
-        for and_sel in [".btn btn-startchat", ".btn-startchat", ".btn.btn-startchat", ".btn .btn-startchat"]:
-            try:
-                btn = self.dp.ele(and_sel, timeout=timeout)
-                if btn:
-                    return btn
-            except Exception:
-                pass
-
-        # 3. ka 属性选择器（boss直聘特有）
-        try:
-            btn = self.dp.ele("[ka='btn-startchat']", timeout=timeout)
-            if btn:
-                return btn
-        except Exception:
-            pass
-
-        # 4. DrissionPage 特殊语法
-        try:
-            btn = self.dp.ele("tag:a@@class=btn-startchat", timeout=timeout)
-            if btn:
-                return btn
-        except Exception:
-            pass
-
-        # 5. JS 大范围查找（兜底）
-        try:
-            btn = self.dp.run_js("""
-                var btns = document.querySelectorAll('a, button, div, span');
-                for (var i = 0; i < btns.length; i++) {
-                    var t = btns[i].textContent.trim();
-                    if (t.indexOf('立即沟通') !== -1 || t.indexOf('继续沟通') !== -1) {
-                        return btns[i].outerHTML;
-                    }
-                }
-                return null;
-            """)
-            if btn:
-                for chat_text in ("立即沟通", "继续沟通"):
-                    try:
-                        b = self.dp.ele(f"text:{chat_text}", timeout=1)
-                        if b:
-                            return b
-                    except Exception:
-                        pass
-        except Exception:
-            pass
 
         return None
 
     def _upload_image(self, img_path):
         """
         上传单张图片。
-        严格参考源文件 mian.py 使用 click.to_upload() 方式。
+        严格参考源文件 mian.py：
+        dp.ele(".toolbar-btn-content icon btn-sendimg tooltip tooltip-top").click.to_upload(路径)
         """
         if not os.path.isfile(img_path):
             self._log("WARN", f"上传图片文件不存在: {img_path}")
@@ -1133,36 +1160,18 @@ class BotCore:
 
         abs_path = os.path.abspath(img_path)
 
-        # 策略1: 查找所有可能的图片上传按钮并使用 click.to_upload()
-        all_selectors = [
-            ".toolbar-btn-content icon btn-sendimg tooltip tooltip-top",
-            "[class*='btn-sendimg']",
-            ".btn-sendimg",
-            "[class*='sendimg']",
-            ".toolbar-btn-content",
-            "[class*='toolbar']",
-            ".chat-toolbar",
-            "[class*='upload']",
-            "[class*='image']",
-            "[class*='img']",
-            ".toolbar-btn-content .btn-sendimg",
-            ".toolbar-btn-content .icon.btn-sendimg",
-        ]
-        for sel in all_selectors:
-            try:
-                btn = self.dp.ele(sel, timeout=1)
-                if btn:
-                    try:
-                        btn.click.to_upload(abs_path)
-                        self._random_delay(2, 3)
-                        self._log("INFO", f"已上传图片: {os.path.basename(img_path)}")
-                        return True
-                    except Exception:
-                        pass
-            except Exception:
-                pass
+        # 严格参考源文件：.toolbar-btn-content icon btn-sendimg tooltip tooltip-top
+        try:
+            btn = self.dp.ele(".toolbar-btn-content icon btn-sendimg tooltip tooltip-top", timeout=5)
+            if btn:
+                btn.click.to_upload(abs_path)
+                self._random_delay(2, 3)
+                self._log("INFO", f"已上传图片: {os.path.basename(img_path)}")
+                return True
+        except Exception:
+            pass
 
-        # 策略2: 直接找 input[type=file] 并输入路径
+        # 备选：直接找 input[type=file]
         try:
             file_input = self.dp.ele("tag:input@@type=file", timeout=3)
             if file_input:
@@ -1170,29 +1179,6 @@ class BotCore:
                 self._random_delay(1, 2)
                 self._log("INFO", f"已上传图片(文件框): {os.path.basename(img_path)}")
                 return True
-        except Exception:
-            pass
-
-        # 策略3: 通过 JS 创建 file input 并上传
-        try:
-            result = self.dp.run_js("""
-                var fileInput = document.querySelector('input[type="file"]');
-                if (!fileInput) {
-                    fileInput = document.createElement('input');
-                    fileInput.type = 'file';
-                    fileInput.multiple = true;
-                    fileInput.style.display = 'none';
-                    document.body.appendChild(fileInput);
-                }
-                return true;
-            """)
-            if result:
-                file_input = self.dp.ele("tag:input@@type=file", timeout=2)
-                if file_input:
-                    file_input.input(abs_path)
-                    self._random_delay(1, 2)
-                    self._log("INFO", f"已上传图片(JS): {os.path.basename(img_path)}")
-                    return True
         except Exception:
             pass
 
@@ -1215,23 +1201,20 @@ class BotCore:
     # ── Cookie 管理 ──
 
     def _load_cookies(self) -> bool:
-        """加载 Cookie，优先使用 web_app 目录下的文件。"""
+        """加载 Cookie，优先使用 app/data 目录下的文件。"""
         try:
             import json as _json
-            # 使用 web_app 目录的绝对路径
-            web_app_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "web_app")
+            data_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
             cookie_name = self._cookie_file if self._cookie_file else "zhipin_cookies.json"
-            # 尝试多个路径：先试配置的文件名，再试 zhipin_cookies.json
             paths_to_try = []
             if not os.path.isabs(cookie_name):
-                paths_to_try.append(os.path.join(web_app_dir, cookie_name))
+                paths_to_try.append(os.path.join(data_dir, cookie_name))
             else:
                 paths_to_try.append(cookie_name)
-            # 如果配置的文件名不是 zhipin_cookies.json，也尝试这个
             if cookie_name != "zhipin_cookies.json":
-                paths_to_try.append(os.path.join(web_app_dir, "zhipin_cookies.json"))
+                paths_to_try.append(os.path.join(data_dir, "zhipin_cookies.json"))
             else:
-                paths_to_try.append(os.path.join(web_app_dir, "zhipin_cookies.json"))
+                paths_to_try.append(os.path.join(data_dir, "zhipin_cookies.json"))
             loaded = False
             for p in paths_to_try:
                 if os.path.exists(p):
@@ -1249,18 +1232,17 @@ class BotCore:
             return False
 
     def _save_cookies(self):
-        """保存 Cookie 到 web_app 目录。"""
+        """保存 Cookie 到 app/data 目录。"""
         try:
             import json as _json
-            web_app_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "web_app")
+            data_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
             cookie_name = self._cookie_file if self._cookie_file else "zhipin_cookies.json"
-            dst = os.path.join(web_app_dir, cookie_name)
+            dst = os.path.join(data_dir, cookie_name)
             cookies = self.dp.cookies()
             with open(dst, "w", encoding="utf-8") as f:
                 _json.dump(cookies, f, ensure_ascii=False, indent=2)
             self._log("INFO", f"已保存 Cookie: {dst}")
-            # 同时保存一份到 zhipin_cookies.json（兼容旧版）
-            fallback = os.path.join(web_app_dir, "zhipin_cookies.json")
+            fallback = os.path.join(data_dir, "zhipin_cookies.json")
             if dst != fallback:
                 import shutil
                 shutil.copy2(dst, fallback)
@@ -1270,10 +1252,9 @@ class BotCore:
     def _clear_cookies(self):
         if self._clear_cookies_on_failure:
             try:
-                web_app_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "web_app")
                 cookie_name = self._cookie_file if self._cookie_file else "zhipin_cookies.json"
                 if not os.path.isabs(cookie_name):
-                    dst = os.path.join(web_app_dir, cookie_name)
+                    dst = os.path.join(DATA_DIR, cookie_name)
                 else:
                     dst = cookie_name
                 if os.path.exists(dst):
@@ -1285,8 +1266,8 @@ class BotCore:
     # ── 去重管理 ──
 
     def _chatted_db_path(self) -> str:
-        web_app_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "web_app")
-        return os.path.join(web_app_dir, "chatted_jobs.json")
+        data_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
+        return os.path.join(data_dir, "chatted_jobs.json")
 
     def _load_chatted(self) -> set:
         try:
@@ -1317,7 +1298,7 @@ class BotCore:
 
     # ── 聊天日志 ──
 
-    def _save_chat_log(self, job: dict, skipped: bool = False):
+    def _save_chat_log(self, job: dict, skipped: bool = False, ai_result: dict = None):
         try:
             logs = []
             if os.path.exists(CHATS_LOG_FILE):
@@ -1331,8 +1312,16 @@ class BotCore:
                 "query": self._query,
                 "city": self._city,
                 "skipped": skipped,
+                "ai_score": ai_result.get("score", "") if ai_result else "",
+                "ai_reason": ai_result.get("reason", "") if ai_result else "",
             })
             with open(CHATS_LOG_FILE, "w", encoding="utf-8") as f:
                 json.dump(logs[-500:], f, ensure_ascii=False, indent=2)
+            # 同步保存到 Excel
+            try:
+                from excel_exporter import save_jd_analysis
+                save_jd_analysis(job, ai_result, skipped, self._query, self._city)
+            except Exception:
+                pass
         except Exception:
             pass

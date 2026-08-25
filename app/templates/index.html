@@ -58,6 +58,11 @@
 html{transition:color-scheme .3s ease}
 body{transition:background-color .3s ease,color .3s ease}
 
+/* Respect reduced motion */
+@media (prefers-reduced-motion: reduce){
+  *,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}
+}
+
 /* Base */
 html,body{height:100%}
 body{transition:background-color .3s ease,color .3s ease}
@@ -82,11 +87,11 @@ a{color:var(--accent);text-decoration:none}
 .hidden{display:none!important}
 
 /* Layout */
-.app{display:flex;width:100%;height:100%}
+.app{display:flex;width:100%;height:100dvh}
 .side{flex:0 0 360px;display:flex;flex-direction:column;background:var(--side-bg);color:var(--side-text);position:relative;z-index:10;border-right:1px solid var(--bd);overflow:hidden;-webkit-backdrop-filter:var(--glass-blur);backdrop-filter:var(--glass-blur)}
 .side-head{display:flex;align-items:center;gap:10px;padding:14px 18px;border-bottom:1px solid var(--side-input-bd);flex-shrink:0}
 .side-head .logo-wrap{width:32px;height:32px;border-radius:10px;background:linear-gradient(135deg,#5b7cfa,#8a6bfa);display:flex;align-items:center;justify-content:center;color:#fff;font-size:18px;flex-shrink:0;box-shadow:0 2px 12px rgba(91,124,250,.35);transition:transform .2s ease,box-shadow .2s ease}.side-head .logo-wrap:hover{transform:scale(1.1);box-shadow:0 4px 20px rgba(91,124,250,.5)}
-.side-head .logo-text{font-size:14px;font-weight:600;flex:1;letter-spacing:-.02em}
+.side-head .logo-text{font-size:14px;font-weight:600;flex:1;letter-spacing:-.02em;text-wrap:balance}
 .side-head .conn-badge{font-size:10px;padding:2px 8px;border-radius:10px;font-weight:500;background:var(--success-bg);color:var(--success)}
 .side-head .conn-badge.disconnected{background:var(--danger-bg);color:var(--danger)}
 .side-scroll{flex:1;overflow-y:auto;padding:14px 16px 20px;display:flex;flex-direction:column;gap:14px}
@@ -192,7 +197,7 @@ a{color:var(--accent);text-decoration:none}
 .theme-toggle .toggle-icon{font-size:14px;line-height:1}
 
 /* Content */
-.content{flex:1;overflow-y:auto;padding:20px 24px;display:flex;flex-direction:column;gap:16px}
+.content{flex:1;overflow-y:auto;padding:20px 24px;display:flex;flex-direction:column;gap:16px;text-wrap:pretty}
 .stats-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
 .stat-card{padding:16px 18px;border-radius:16px;background:var(--surface);border:1px solid var(--bd);box-shadow:var(--sh-sm);transition:all var(--dur) var(--ease);-webkit-backdrop-filter:var(--glass-blur);backdrop-filter:var(--glass-blur)}
 .stat-card:hover{box-shadow:var(--sh-md);border-color:var(--bd-2);transform:translateY(-2px)}
@@ -236,6 +241,11 @@ a{color:var(--accent);text-decoration:none}
 .job-thumbs img{width:40px;height:30px;object-fit:cover;border-radius:6px;border:1px solid var(--bd);cursor:pointer;transition:transform var(--dur) var(--ease)}
 .job-thumbs img:hover{transform:scale(1.15)}
 .job-thumbs-more{font-size:10px;color:var(--fg-3rd);align-self:center;margin-left:2px}
+.job-img-chip{position:relative;display:inline-block;width:64px;height:48px;border-radius:8px;overflow:hidden;border:1px solid var(--bd);cursor:zoom-in;transition:transform var(--dur) var(--ease),box-shadow var(--dur) var(--ease)}
+.job-img-chip:hover{transform:scale(1.08);box-shadow:var(--sh)}
+.job-img-chip img{width:100%;height:100%;object-fit:cover}
+.job-img-chip .chip-remove{position:absolute;top:2px;right:2px;width:18px;height:18px;border-radius:50%;background:rgba(0,0,0,.6);color:#fff;font-size:10px;display:flex;align-items:center;justify-content:center;opacity:0;transition:opacity var(--dur) var(--ease);line-height:1}
+.job-img-chip:hover .chip-remove{opacity:1}
 .job-item .job-badge{font-size:9px;padding:2px 6px;border-radius:3px;background:var(--accent-light);color:var(--accent);font-weight:500}
 .job-item .job-del{font-size:14px;color:var(--fg-4th);cursor:pointer;padding:2px 4px;border-radius:3px;transition:all var(--dur) var(--ease)}
 .job-item .job-del:hover{color:var(--danger);background:var(--danger-bg)}
@@ -333,11 +343,16 @@ a{color:var(--accent);text-decoration:none}
       <div>
         <div class="side-section-title">🤖 AI 智能解析 <span class="badge-count" id="aiBadge">关</span></div>
         <div class="acc-field-row"><label>启用</label><span id="aiEnabled" class="toggle-switch" onclick="toggleAiEnabled()"></span></div>
-        <div class="acc-field-row"><label>API Key</label><input class="side-form-input" id="aiApiKey" type="password" placeholder="sk-..." onchange="onAiChange()"></div>
-        <div class="acc-field-row"><label>API 地址</label><input class="side-form-input" id="aiApiBase" type="text" placeholder="https://apihub.agnes-ai.com/v1" onchange="onAiChange()"></div>
-        <div class="acc-field-row"><label>模型</label><input class="side-form-input" id="aiModel" type="text" placeholder="agnes-2.5-flash" onchange="onAiChange()"></div>
         <div class="acc-field-row"><label>匹配阈值</label><input class="side-form-input" id="aiThreshold" type="number" min="0" max="100" placeholder="70" onchange="onAiChange()"></div>
+        <button class="adv-toggle" id="aiProvToggle" onclick="toggleAiProviders()">
+          🔌 AI 接口列表 <span class="arrow">▶</span>
+          <span id="aiProvSummary" style="margin-left:4px;font-size:10px;color:var(--fg-3rd);font-weight:400"></span>
+        </button>
+        <div class="adv-section" id="aiProvSection">
+          <div id="aiProviders" style="margin-top:8px"></div>
+        </div>
         <div class="side-btn-row" style="margin-top:6px;flex-wrap:wrap">
+          <button class="side-btn side-btn-ghost side-btn-sm" onclick="addAiProvider()">➕ 添加 AI 接口</button>
           <button class="side-btn side-btn-ghost side-btn-sm" onclick="showResumeModal()">📄 编辑简历</button>
           <button class="side-btn side-btn-ghost side-btn-sm" onclick="testAi()">⚡ 测试 AI</button>
         </div>
@@ -390,7 +405,7 @@ a{color:var(--accent);text-decoration:none}
       <div class="topbar-task" id="topbarTask"></div>
       <div class="topbar-right">
         <span class="topbar-badge">v2.0</span>
-        <button class="theme-toggle" onclick="toggleTheme()" title="切换主题">
+        <button class="theme-toggle" onclick="toggleTheme()" title="切换主题" aria-label="切换主题">
           <span class="toggle-icon" id="themeIcon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg></span>
           <span id="themeLabel">🌙 暗色</span>
         </button>
@@ -416,7 +431,7 @@ a{color:var(--accent);text-decoration:none}
           <div class="panel-body" id="jobList"></div>
         </div>
         <div class="panel panel-half">
-          <div class="panel-header"><span class="panel-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg></span><span class="panel-title">运行日志</span><div class="panel-actions"><button class="btn btn-ghost btn-sm" onclick="clearLog()">清空</button></div></div>
+          <div class="panel-header"><span class="panel-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg></span><span class="panel-title">运行日志</span><div class="panel-actions"><button class="btn btn-ghost btn-sm" onclick="copyLog()" title="复制全部日志">📋 复制</button><button class="btn btn-ghost btn-sm" onclick="clearLog()">清空</button></div></div>
           <div class="panel-body log-area" id="logArea"><div class="log-empty"><div class="empty-icon">📝</div><div>等待操作...</div></div></div>
         </div>
       </div>
@@ -433,14 +448,59 @@ let availableImages = [];
 
 function renderAiConfig() {
   if (!config.ai) config.ai = {};
-  config.ai = Object.assign({enabled:false,api_key:'',api_base:'https://apihub.agnes-ai.com/v1',model:'agnes-2.5-flash',match_threshold:70}, config.ai);
+  config.ai = Object.assign({enabled:false,api_key:'',api_base:'https://apihub.agnes-ai.com/v1',model:'agnes-2.5-flash',match_threshold:70,providers:[]}, config.ai);
   setEl('aiEnabled', 'toggle-switch' + (config.ai.enabled ? ' on' : ''));
-  setVal('aiApiKey', config.ai.api_key || '');
-  setVal('aiApiBase', config.ai.api_base || 'https://apihub.agnes-ai.com/v1');
-  setVal('aiModel', config.ai.model || 'agnes-2.5-flash');
   setVal('aiThreshold', config.ai.match_threshold ?? 70);
   const badge = document.getElementById('aiBadge');
   if (badge) badge.textContent = config.ai.enabled ? '开' : '关';
+  // 渲染多 provider
+  var container = document.getElementById('aiProviders');
+  if (!container) return;
+  var html = '';
+  var providers = config.ai.providers || [];
+  for (var i = 0; i < providers.length; i++) {
+    var p = providers[i];
+    html += '<div style="border:1px solid var(--border);border-radius:8px;padding:8px;margin-bottom:6px;position:relative">';
+    html += '<div style="position:absolute;right:4px;top:4px"><button class="side-btn side-btn-ghost side-btn-sm" onclick="removeAiProvider('+i+')" style="padding:2px 6px;font-size:10px">删除</button></div>';
+    html += '<div class="acc-field-row"><label>名称</label><input class="side-form-input" value="'+escAttr(p.name||'')+'" onchange="updateAiProvider('+i+',\'name\',this.value)" placeholder="如: Agnes"></div>';
+    html += '<div class="acc-field-row"><label>API Key</label><input class="side-form-input" type="password" value="'+escAttr(p.api_key||'')+'" onchange="updateAiProvider('+i+',\'api_key\',this.value)" placeholder="sk-..."></div>';
+    html += '<div class="acc-field-row"><label>API 地址</label><input class="side-form-input" value="'+escAttr(p.api_base||'')+'" onchange="updateAiProvider('+i+',\'api_base\',this.value)" placeholder="https://..."></div>';
+    html += '<div class="acc-field-row"><label>模型</label><input class="side-form-input" value="'+escAttr(p.model||'')+'" onchange="updateAiProvider('+i+',\'model\',this.value)" placeholder="agnes-2.5-flash"></div>';
+    html += '<div class="acc-field-row"><label>超时(s)</label><input class="side-form-input" type="number" value="'+(p.timeout||30)+'" onchange="updateAiProvider('+i+',\'timeout\',parseInt(this.value)||30)"></div>';
+    html += '</div>';
+  }
+  container.innerHTML = html;
+  // 更新 provider 摘要
+  var summary = document.getElementById('aiProvSummary');
+  if (summary) {
+    if (providers.length === 0) {
+      summary.textContent = '未配置';
+    } else if (providers.length === 1) {
+      summary.textContent = providers[0].name || '默认';
+    } else {
+      summary.textContent = providers.length + ' 个接口';
+    }
+  }
+}
+
+function addAiProvider() {
+  if (!config.ai) config.ai = {};
+  if (!config.ai.providers) config.ai.providers = [];
+  config.ai.providers.push({name:'新接口',api_key:'',api_base:'',model:'',timeout:30});
+  renderAiConfig();
+  saveConfig();
+}
+
+function removeAiProvider(idx) {
+  if (!config.ai || !config.ai.providers) return;
+  config.ai.providers.splice(idx, 1);
+  renderAiConfig();
+  saveConfig();
+}
+
+function updateAiProvider(idx, field, val) {
+  if (!config.ai || !config.ai.providers) return;
+  config.ai.providers[idx][field] = val;
 }
 
 function toggleAiEnabled() {
@@ -454,25 +514,32 @@ function toggleAiEnabled() {
 function onAiChange() {
   if (!config.ai) config.ai = {};
   config.ai.enabled = document.getElementById('aiEnabled').classList.contains('on');
-  config.ai.api_key = document.getElementById('aiApiKey').value.trim();
-  config.ai.api_base = document.getElementById('aiApiBase').value.trim() || 'https://apihub.agnes-ai.com/v1';
-  config.ai.model = document.getElementById('aiModel').value.trim() || 'agnes-2.5-flash';
   config.ai.match_threshold = parseInt(document.getElementById('aiThreshold').value) || 70;
+  // 同步旧字段（向后兼容）
+  var providers = config.ai.providers || [];
+  if (providers.length > 0) {
+    config.ai.api_key = providers[0].api_key || '';
+    config.ai.api_base = providers[0].api_base || '';
+    config.ai.model = providers[0].model || '';
+  }
   renderAiConfig();
   saveConfig();
 }
 
 function testAi() {
   const status = document.getElementById('aiStatus');
-  if (!config.ai || !config.ai.api_key) {
-    if (status) status.textContent = '请先填写 API Key 并保存';
+  if (!config.ai) { if (status) status.textContent = '请先配置 AI'; return; }
+  var providers = config.ai.providers || [];
+  var hasKey = providers.some(function(p){ return p.api_key; });
+  if (!hasKey) {
+    if (status) status.textContent = '请先填写至少一个 API Key 并保存';
     addLog('ERROR', 'AI 测试失败: API Key 未配置');
     return;
   }
   if (status) status.textContent = '⏳ 正在测试 AI 分析...';
   onAiChange();
   saveConfig().then(function() {
-    return fetch('/api/ai/config', {method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify({enabled:config.ai.enabled, api_key:config.ai.api_key, api_base:config.ai.api_base, model:config.ai.model, match_threshold:config.ai.match_threshold})});
+    return fetch('/api/ai/config', {method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify(config.ai)});
   }).then(r=>r.json()).then(function(data) {
     if (data.status !== 'ok') throw new Error(data.message || '保存 AI 配置失败');
     const sample = {
@@ -578,6 +645,38 @@ function clearLog() {
   document.getElementById('logArea').innerHTML = '<div class="log-empty"><div class="empty-icon">📝</div><div>等待操作...</div></div>';
 }
 
+function copyLog() {
+  var area = document.getElementById('logArea');
+  if (!area) return;
+  var text = area.innerText || area.textContent || '';
+  if (!text.trim()) { addLog('WARN', '日志为空，无可复制内容'); return; }
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(function() {
+      addLog('SUCCESS', '✓ 日志已复制到剪贴板（' + text.length + ' 字符）');
+    }).catch(function() {
+      fallbackCopy(text);
+    });
+  } else {
+    fallbackCopy(text);
+  }
+}
+
+function fallbackCopy(text) {
+  var ta = document.createElement('textarea');
+  ta.value = text;
+  ta.style.position = 'fixed';
+  ta.style.opacity = '0';
+  document.body.appendChild(ta);
+  ta.select();
+  try {
+    document.execCommand('copy');
+    addLog('SUCCESS', '✓ 日志已复制到剪贴板');
+  } catch(e) {
+    addLog('ERROR', '复制失败: ' + e.message);
+  }
+  document.body.removeChild(ta);
+}
+
 
 function loadConfig() {
   fetch('/api/config').then(r=>{if(!r.ok)throw new Error('HTTP '+r.status);return r.json()}).then(cfg => {
@@ -681,6 +780,13 @@ function toggleAdvSection() {
   btn.classList.toggle("open");
 }
 
+function toggleAiProviders() {
+  const btn = document.getElementById('aiProvToggle');
+  const section = document.getElementById('aiProvSection');
+  section.classList.toggle("open");
+  btn.classList.toggle("open");
+}
+
 function toggleAdvBool(key) {
   if (key === "headless") {
     if (!config.browser) config.browser = {};
@@ -758,7 +864,7 @@ function renderJobs() {
       '<div class="job-info" onclick="editJob('+i+')">'+
         '<div class="job-query">'+escHtml(j.query||'')+'</div>'+
         '<div class="job-city">'+escHtml(j.city||'')+(j.scroll_pages?' · '+j.scroll_pages+'页':'')+(j.image_files&&j.image_files.length?' · 图片'+j.image_files.length:'')+'</div>'+
-        (j.image_files&&j.image_files.length?'<div class="job-thumbs">'+j.image_files.slice(0,3).map(f=>'<img src="/'+f+'" alt="" loading="lazy">').join('')+(j.image_files.length>3?'<span class="job-thumbs-more">+'+(j.image_files.length-3)+'</span>':'')+'</div>':'')+
+        (j.image_files&&j.image_files.length?'<div class="job-thumbs">'+j.image_files.slice(0,3).map(f=>{var fn=f.replace(/^dashboard[\/]/,'');return '<img src="/dashboard/'+fn+'" alt="" loading="lazy" onclick="event.stopPropagation();showImageLightbox(\'/dashboard/'+fn+'\')">'}).join('')+(j.image_files.length>3?'<span class="job-thumbs-more">+'+(j.image_files.length-3)+'</span>':'')+'</div>':'')+
       '</div>'+
       '<span class="job-badge">'+(j.city||'')+'</span>'+
       '<span class="job-del" onclick="event.stopPropagation();deleteJob('+i+')" title="删除">✕</span>'+
@@ -832,7 +938,7 @@ function showJobModal(job) {
   overlay.innerHTML =
     '<div class="modal">'+
       '<h3>'+(editingJobIdx>=0?'编辑岗位':'添加岗位')+'</h3>'+
-      '<div class="modal-field"><label>城市</label><input id="modalCity" value="'+escHtml(job.city||'')+'" placeholder="例如: 上海"></div>'+
+      '<div class="modal-field"><label>城市</label><input id="modalCity" value="'+escHtml(job.city||'')+'" placeholder="例如: 上海" list="cityList"><datalist id="cityList"></datalist></div>'+
       '<div class="modal-field"><label>搜索关键词</label><input id="modalQuery" value="'+escHtml(job.query||'')+'" placeholder="例如: AI产品经理"></div>'+
       '<div class="modal-field"><label>翻页数</label><input id="modalPages" type="number" value="'+(job.scroll_pages||5)+'" min="1" max="20"></div>'+
       '<div class="modal-field"><label>打招呼消息</label><textarea id="modalGreeting" placeholder="输入自定义打招呼消息" style="min-height:80px">'+escHtml(job.greeting_message||defaultGreeting)+'</textarea></div>'+
@@ -850,11 +956,22 @@ function showJobModal(job) {
     '</div>';
   document.body.appendChild(overlay);
   if (typeof renderJobImageChips === 'function') renderJobImageChips();
+  loadCityList();
 }
 
 function closeJobModal() {
   const m = document.getElementById('jobModal');
   if (m) m.remove();
+}
+
+function loadCityList() {
+  var dl = document.getElementById('cityList');
+  if (!dl) return;
+  fetch('/api/cities').then(function(r){return r.json()}).then(function(d){
+    if (d.status === 'ok' && d.cities) {
+      dl.innerHTML = d.cities.map(function(c){return '<option value="'+escHtml(c)+'">'}).join('');
+    }
+  }).catch(function(){});
 }
 
 function handleJobImageUpload(event) {
@@ -885,17 +1002,24 @@ function renderJobImageChips() {
   if (!el) return;
   const a = config.accounts[activeAccountIdx];
   const job = a && a.jobs && a.jobs[editingJobIdx];
-  if (!job || !job.image_files || !job.image_files.length) {
-    el.innerHTML = '';
-    return;
-  }
-  el.innerHTML = job.image_files.map(f => {
-    const name = f.replace(/^dashboard[\/]/, '');
-    const enc = encodeURIComponent(f);
-    return '<span class="chip">'+escHtml(name)+'<span class="chip-remove" onclick="event.stopPropagation();removeImageChipForJob(\''+enc+'\')\">✕</span></span>';
-  }).join('');
+  el.innerHTML = '';
+  if (!job || !job.image_files || !job.image_files.length) return;
+  job.image_files.forEach(f => {
+    var fn = f.replace(/^dashboard[\/]/, '');
+    var chip = document.createElement('div');
+    chip.className = 'job-img-chip';
+    chip.onclick = function() { showImageLightbox('/dashboard/' + fn); };
+    var img = document.createElement('img');
+    img.src = '/dashboard/' + fn;
+    chip.appendChild(img);
+    var rm = document.createElement('span');
+    rm.className = 'chip-remove';
+    rm.textContent = '✕';
+    rm.onclick = function(e) { e.stopPropagation(); removeImageChipForJob(f); };
+    chip.appendChild(rm);
+    el.appendChild(chip);
+  });
 }
-
 function removeImageChipForJob(name) {
   name = decodeURIComponent(name);
   const a = config.accounts[activeAccountIdx];
@@ -906,6 +1030,25 @@ function removeImageChipForJob(name) {
     renderJobImageChips();
     saveConfig();
   }
+}
+
+function showImageLightbox(src) {
+  closeLightbox();
+  var overlay = document.createElement('div');
+  overlay.id = 'lightboxOverlay';
+  overlay.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.85);display:flex;align-items:center;justify-content:center;cursor:zoom-out;animation:fadeIn .2s ease';
+  overlay.onclick = closeLightbox;
+  var img = document.createElement('img');
+  img.src = src;
+  img.style.cssText = 'max-width:90vw;max-height:90vh;border-radius:12px;box-shadow:0 20px 60px rgba(0,0,0,.5);animation:slideUp .25s ease';
+  img.onclick = function(e) { e.stopPropagation(); };
+  overlay.appendChild(img);
+  document.body.appendChild(overlay);
+}
+
+function closeLightbox() {
+  var el = document.getElementById('lightboxOverlay');
+  if (el) el.remove();
 }
 
 function saveJobModal() {
