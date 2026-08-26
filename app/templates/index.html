@@ -369,6 +369,16 @@ a{color:var(--accent);text-decoration:none}
           <button class="side-btn side-btn-ghost side-btn-sm" onclick="testAi()">⚡ 测试 AI</button>
         </div>
         <div id="aiStatus" style="font-size:10px;color:var(--fg-3rd);margin-top:4px;word-break:break-all"></div>
+        <!-- AI 测试对比面板 -->
+        <div class="ai-test-panel" style="margin-top:10px;border:1px solid var(--bd-2);border-radius:8px;padding:10px">
+          <div style="font-size:11px;font-weight:600;color:var(--fg-2nd);margin-bottom:6px">🧪 AI 测试对比</div>
+          <textarea id="aiTestJobDesc" placeholder="粘贴岗位描述（JD）进行测试..." style="width:100%;min-height:60px;padding:6px 8px;font-size:11px;border:1px solid var(--bd-2);border-radius:6px;background:var(--side-input-bg);color:var(--fg);resize:vertical;box-sizing:border-box;margin-bottom:6px"></textarea>
+          <div class="side-btn-row" style="margin-bottom:6px;flex-wrap:wrap">
+            <button class="side-btn side-btn-ghost side-btn-sm" onclick="runAiTest()">▶ 运行测试</button>
+            <button class="side-btn side-btn-ghost side-btn-sm" onclick="clearAiTest()">清空</button>
+          </div>
+          <div id="aiTestResults" style="font-size:10.5px;color:var(--fg-2nd);max-height:200px;overflow-y:auto"></div>
+        </div>
       </div>
       <div style="flex:1">
               <div>
@@ -573,6 +583,65 @@ function testAi() {
     if (status) status.textContent = '✗ 测试失败: ' + e.message;
     addLog('ERROR', 'AI 测试失败: ' + e.message);
   });
+}
+
+// ── AI 测试对比 ──
+let aiTestHistory = []; // 存储测试历史
+
+function runAiTest() {
+  const desc = document.getElementById('aiTestJobDesc').value.trim();
+  if (!desc) { addLog('ERROR', '请先输入岗位描述'); return; }
+  const resultsEl = document.getElementById('aiTestResults');
+  resultsEl.innerHTML = '<div style="color:var(--fg-3rd)">⏳ 分析中...</div>';
+  const job = {
+    job_name: '测试岗位',
+    salary: '面议',
+    description: desc,
+    requirements: desc,
+    company: '测试公司',
+    url: 'https://www.zhipin.com/job_detail/test_' + Date.now() + '.html'
+  };
+  const startTime = Date.now();
+  fetch('/api/ai/analyze', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({job: job})})
+  .then(r=>r.json())
+  .then(data => {
+    const duration = ((Date.now() - startTime) / 1000).toFixed(1);
+    if (data.status !== 'ok') throw new Error(data.message || 'AI 分析失败');
+    const r = data.result || {};
+    const result = {time: new Date().toLocaleTimeString(), score: r.score, is_match: r.is_match, reason: r.reason, strengths: r.strengths, weaknesses: r.weaknesses, greeting: r.suggested_greeting, duration: duration};
+    aiTestHistory.unshift(result);
+    if (aiTestHistory.length > 5) aiTestHistory.pop(); // 保留最近 5 次
+    renderAiTestResults();
+  })
+  .catch(e => {
+    resultsEl.innerHTML = '<div style="color:var(--danger)">✗ ' + e.message + '</div>';
+    addLog('ERROR', 'AI 测试失败: ' + e.message);
+  });
+}
+
+function renderAiTestResults() {
+  const el = document.getElementById('aiTestResults');
+  if (!el) return;
+  if (aiTestHistory.length === 0) { el.innerHTML = ''; return; }
+  el.innerHTML = aiTestHistory.map((r, i) =>
+    '<div style="padding:6px 0;border-bottom:' + (i < aiTestHistory.length-1 ? '1px solid var(--bd-2)' : 'none') + '">'+
+      '<div style="display:flex;justify-content:space-between;align-items:center">'+
+        '<span style="font-weight:600;color:' + (r.is_match ? 'var(--success)' : 'var(--danger)') + '">' + (r.is_match ? '✓ 匹配' : '✗ 不匹配') + ' · ' + r.score + '/100</span>'+
+        '<span style="color:var(--fg-4th);font-size:9px">' + r.time + ' · ' + r.duration + 's</span>'+
+      '</div>'+
+      '<div style="color:var(--fg-3rd);margin-top:2px">' + escHtml(r.reason || '') + '</div>'+
+      (r.strengths && r.strengths.length ? '<div style="color:var(--success);margin-top:2px">优势: ' + escHtml(r.strengths.join(', ')) + '</div>' : '')+
+      (r.weaknesses && r.weaknesses.length ? '<div style="color:var(--danger);margin-top:2px">劣势: ' + escHtml(r.weaknesses.join(', ')) + '</div>' : '')+
+      (r.greeting ? '<div style="margin-top:4px;padding:4px 6px;background:var(--side-input-bg);border-radius:4px;color:var(--fg-2nd)">💬 ' + escHtml(r.greeting) + '</div>' : '')+
+    '</div>'
+  ).join('');
+}
+
+function clearAiTest() {
+  aiTestHistory = [];
+  document.getElementById('aiTestJobDesc').value = '';
+  const el = document.getElementById('aiTestResults');
+  if (el) el.innerHTML = '';
 }
 
 function showExcelModal() {

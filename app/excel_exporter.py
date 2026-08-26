@@ -2,14 +2,19 @@
 
 导出内容：
 - 时间戳
-- 岗位名称、公司、薪资
+- 岗位名称、公司、薪资、城市
+- 岗位描述(JD)、任职要求
 - AI 匹配分数、是否匹配、匹配理由
 - AI 优势、劣势、建议打招呼消息
+- AI 完整返回 JSON（用于评测）
+- AI 响应耗时（秒）
+- 使用的提示词版本号
 - 投递状态（已投递/已跳过）
 """
 import os
 import time
 import threading
+import json
 from typing import Optional
 
 import openpyxl
@@ -34,6 +39,9 @@ SKIP_FILL = PatternFill(start_color="fff3e0", end_color="fff3e0", fill_type="sol
 
 _lock = threading.Lock()
 
+# Excel 单元格最大字符限制
+MAX_CELL_LENGTH = 32000
+
 
 def _ensure_jd_dir():
     os.makedirs(JD_DIR, exist_ok=True)
@@ -57,7 +65,8 @@ def _write_header(ws):
         "岗位描述(JD)", "任职要求",
         "AI匹配分", "是否匹配", "匹配理由",
         "AI优势", "AI劣势", "建议打招呼",
-        "投递状态", "岗位URL", "使用的提示词",
+        "AI响应耗时(s)", "提示词版本",
+        "AI完整返回JSON", "投递状态", "岗位URL",
     ]
     for col_idx, header in enumerate(headers, 1):
         cell = ws.cell(row=1, column=col_idx, value=header)
@@ -84,15 +93,25 @@ def _auto_width(ws):
         ws.column_dimensions[col_letter].width = min(max_len + 4, 50)
 
 
+def _truncate(text: str, max_len: int = MAX_CELL_LENGTH) -> str:
+    """截断超长文本，避免 Excel 单元格溢出。"""
+    if not text:
+        return ""
+    if len(text) > max_len:
+        return text[:max_len] + "...[截断]"
+    return text
+
+
 def save_jd_analysis(
     job: dict,
     ai_result: Optional[dict] = None,
     skipped: bool = False,
     query: str = "",
     city: str = "",
-    prompt_used: str = "",
+    prompt_version: str = "",
     jd_description: str = "",
     jd_requirements: str = "",
+    ai_duration: float = 0.0,
 ) -> str:
     """保存一条 JD + AI 分析记录到 Excel。
 
@@ -102,9 +121,10 @@ def save_jd_analysis(
         skipped: 是否跳过
         query: 搜索关键词
         city: 城市
-        prompt_used: 使用的提示词摘要
+        prompt_version: 提示词版本号
         jd_description: 岗位描述原文
         jd_requirements: 任职要求原文
+        ai_duration: AI 响应耗时（秒）
 
     Returns:
         保存的文件路径
@@ -130,23 +150,28 @@ def save_jd_analysis(
         suggested = ai_result.get("suggested_greeting", "") if ai_result else ""
         status = "已跳过" if skipped else "已投递"
 
+        # AI 完整返回 JSON（用于评测）
+        ai_raw_json = json.dumps(ai_result, ensure_ascii=False) if ai_result else ""
+
         row_data = [
             time.strftime("%Y-%m-%d %H:%M:%S"),
             job.get("job_name", ""),
             job.get("company", ""),
             job.get("salary", ""),
             city,
-            jd_description,
-            jd_requirements,
+            _truncate(jd_description),
+            _truncate(jd_requirements),
             score,
             is_match,
             reason,
             strengths,
             weaknesses,
             suggested,
+            round(ai_duration, 2) if ai_duration else "",
+            prompt_version,
+            _truncate(ai_raw_json, 10000),  # JSON 限制 10000 字符
             status,
             job.get("url", ""),
-            prompt_used[:500] if prompt_used else "",
         ]
 
         for col_idx, val in enumerate(row_data, 1):

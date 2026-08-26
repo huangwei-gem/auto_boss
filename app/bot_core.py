@@ -718,10 +718,10 @@ class BotCore:
             return None
 
     def _analyze_job_with_ai(self, job: dict):
-        """用 AI 分析岗位匹配度。返回匹配结果 dict，未启用时返回 None。"""
+        """用 AI 分析岗位匹配度。返回 (匹配结果, 耗时秒数)，未启用时返回 (None, 0)。"""
         analyzer = self._init_ai()
         if not analyzer:
-            return None
+            return None, 0
         ai_job = {
             "job_name": job.get("job_name", ""),
             "salary": job.get("salary", ""),
@@ -731,14 +731,17 @@ class BotCore:
             "url": job.get("url", ""),
         }
         try:
+            import time as _time
+            _start = _time.time()
             result = analyzer.analyze_job(ai_job)
+            duration = _time.time() - _start
             score = result.get("score", 50)
             is_match = result.get("is_match", True)
-            self._log("INFO", f"🤖 AI 匹配度: {score}/100 —— {result.get('reason', '')[:80]}")
-            return result if (is_match and score >= self._ai_threshold) else None
+            self._log("INFO", f"🤖 AI 匹配度: {score}/100 ({duration:.1f}s) —— {result.get('reason', '')[:80]}")
+            return (result, duration) if (is_match and score >= self._ai_threshold) else (None, duration)
         except Exception as e:
             self._log("WARN", f"AI 分析异常，按通过处理: {e}")
-            return None
+            return None, 0
 
     def _step_browse_jobs(self):
         """遍历岗位列表并投递。"""
@@ -759,35 +762,37 @@ class BotCore:
                     break
             self._log("INFO", f"处理 [{idx+1}/{self.total_jobs}] {job.get('job_name', '未知岗位')}")
             self._random_delay(self._min_interval, self._max_interval)
-            # AI 智能匹配：不达标的岗位直接跳过
-            has_ai = self._ai_enabled and (self._ai_api_key or self._ai_cfg.get("providers", []))
-            if has_ai:
-                ai_result = self._analyze_job_with_ai(job)
-                if ai_result is None and self._init_ai() is not None:
-                    self._log("WARN", f"🤖 AI 判定不匹配，跳过: {job.get('job_name', '')}")
-                    # 仍然抓取 JD 用于 Excel 导出
-                    self._fetch_jd_for_job(job)
-                    self.skipped_count += 1
-                    self._save_chat_log(job, skipped=True)
-                    self._report_progress()
-                    continue
-                if ai_result and ai_result.get("suggested_greeting"):
-                    self._greeting_message = ai_result["suggested_greeting"]
-            else:
-                ai_result = None
+            # 先检查是否已沟通过（避免浪费 API 调用）
             if self._is_already_chatted(job):
                 self._log("INFO", f"⏭️ 已沟通过: {job.get('job_name', '')}")
                 self.skipped_count += 1
                 self._report_progress()
                 self._save_chat_log(job, skipped=True)
                 continue
+            # AI 智能匹配：不达标的岗位直接跳过
+            has_ai = self._ai_enabled and (self._ai_api_key or self._ai_cfg.get("providers", []))
+            if has_ai:
+                ai_result, ai_duration = self._analyze_job_with_ai(job)
+                if ai_result is None and self._init_ai() is not None:
+                    self._log("WARN", f"🤖 AI 判定不匹配，跳过: {job.get('job_name', '')}")
+                    # 仍然抓取 JD 用于 Excel 导出
+                    self._fetch_jd_for_job(job)
+                    self.skipped_count += 1
+                    self._save_chat_log(job, skipped=True, ai_result=None, ai_duration=ai_duration)
+                    self._report_progress()
+                    continue
+                if ai_result and ai_result.get("suggested_greeting"):
+                    self._greeting_message = ai_result["suggested_greeting"]
+            else:
+                ai_result = None
+                ai_duration = 0
             if not self._check_login_expired():
                 break
             try:
                 success = self._apply_job(job)
                 if success:
                     self.applied_count += 1
-                    self._save_chat_log(job, skipped=False, ai_result=ai_result)
+                    self._save_chat_log(job, skipped=False, ai_result=ai_result, ai_duration=ai_duration)
                     self._log("SUCCESS", f"✅ 已投递: {job.get('job_name', '')}")
                 else:
                     self.skipped_count += 1
@@ -1337,7 +1342,7 @@ class BotCore:
 
     # ── 聊天日志 ──
 
-    def _save_chat_log(self, job: dict, skipped: bool = False, ai_result: dict = None):
+    def _save_chat_log(self, job: dict, skipped: bool = False, ai_result: dict = None, ai_duration: float = 0):
         try:
             logs = []
             if os.path.exists(CHATS_LOG_FILE):
@@ -1359,16 +1364,18 @@ class BotCore:
             # 同步保存到 Excel
             try:
                 from excel_exporter import save_jd_analysis
-                # 收集使用的提示词摘要
-                prompt_used = ""
+                import hashlib
+                # 生成提示词版本号（基于当前 prompt 的 hash 前 8 位）
+                prompt_version = ""
                 if hasattr(self, '_ai_analyzer') and self._ai_analyzer:
                     custom_prompts = getattr(self._ai_analyzer, '_custom_prompts', {})
                     if custom_prompts:
-                        prompt_used = f"System: {custom_prompts.get('system', '')[:100]}... | User: {custom_prompts.get('user', '')[:100]}..."
+                        prompt_str = custom_prompts.get("system", "") + custom_prompts.get("user", "")
+                        prompt_version = hashlib.md5(prompt_str.encode()).hexdigest()[:8]
                 # 提取 JD 文本
                 jd_text = job.get("jd_description", "") or ""
                 jd_req = job.get("jd_requirements", "") or ""
-                save_jd_analysis(job, ai_result, skipped, self._query, self._city, prompt_used, jd_text, jd_req)
+                save_jd_analysis(job, ai_result, skipped, self._query, self._city, prompt_version, jd_text, jd_req, ai_duration)
             except Exception:
                 pass
         except Exception:
