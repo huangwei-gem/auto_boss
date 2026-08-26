@@ -996,9 +996,8 @@ class BotCore:
 
             btn_text = chat_btn.text
             if "继续沟通" in btn_text:
-                self._log("INFO", "之前已经沟通过，不需要再沟通")
-                self._mark_chatted(job)
-                return True
+                self._log("INFO", "该岗位之前已投递过（继续沟通），跳过")
+                return False
 
             # ── 3. 获取 JD 信息（参考源文件） ──
             job_description = ""
@@ -1096,6 +1095,9 @@ class BotCore:
                 self._random_delay(1, 2)
             except Exception:
                 pass
+
+            # 投递成功
+            return True
 
         except PageDisconnectedError:
             self._log("WARN", "投递过程中页面连接断开")
@@ -1210,7 +1212,6 @@ class BotCore:
             if btn:
                 btn.click.to_upload(abs_path)
                 self._random_delay(2, 3)
-                self._log("INFO", f"已上传图片: {os.path.basename(img_path)}")
                 return True
         except Exception:
             pass
@@ -1221,12 +1222,10 @@ class BotCore:
             if file_input:
                 file_input.input(abs_path)
                 self._random_delay(1, 2)
-                self._log("INFO", f"已上传图片(文件框): {os.path.basename(img_path)}")
                 return True
         except Exception:
             pass
 
-        self._log("WARN", f"上传图片失败: {os.path.basename(img_path)}")
         return False
 
     def _random_delay(self, min_sec: float, max_sec: float):

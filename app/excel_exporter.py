@@ -131,11 +131,9 @@ def save_jd_analysis(
     """
     _ensure_jd_dir()
     with _lock:
-        # 按日期分文件
-        date_str = time.strftime("%Y-%m-%d")
-        filename = f"JD分析_{date_str}.xlsx"
-        filepath = os.path.join(JD_DIR, date_str, filename)
-        os.makedirs(os.path.dirname(filepath), exist_ok=True)
+        # 所有数据写入同一个文件
+        filename = "JD分析记录.xlsx"
+        filepath = os.path.join(JD_DIR, filename)
 
         wb = _get_workbook(filepath)
         ws = wb["JD分析记录"]
