@@ -157,9 +157,6 @@ class BotCore:
         # 岗位列表
         self.jobs = []
 
-        # 岗位级别自定义打招呼语 {job_url: greeting_text}
-        self._custom_greetings = {}
-
         # 投递队列锁（防止并发操作浏览器）
         self._apply_lock = threading.Lock()
 
@@ -231,33 +228,6 @@ class BotCore:
                 "skipped": self.skipped_count,
                 "total": self.total_jobs,
             })
-
-    def set_custom_greetings(self, custom_greetings: dict):
-        """设置岗位级别自定义打招呼语。
-        Args:
-            custom_greetings: {job_url: greeting_text} 字典
-        """
-        self._custom_greetings = custom_greetings or {}
-        self._log("INFO", f"已设置 {len(self._custom_greetings)} 个岗位的自定义打招呼语")
-
-    def get_job_list(self, task_idx=0):
-        """获取指定任务的岗位列表（预览用，不投递）。
-        Returns:
-            list: 岗位列表，每个岗位包含 job_name, url, company_location 等字段
-        """
-        if not self._init_browser():
-            return []
-        if not self._check_and_handle_login():
-            return []
-        task = self._tasks[task_idx] if task_idx < len(self._tasks) else self._tasks[0]
-        self._query = task.get("query", "")
-        self._city = task.get("city", "上海")
-        self._scroll_pages = task.get("scroll_pages", 5)
-        self._cookie_file = task.get("cookie_file", "zhipin_cookies.json")
-        self._log("INFO", f"🔍 预览搜索: {self._city} · {self._query}")
-        self.running = True  # _parse_job_list 需要 running=True
-        self._parse_job_list()
-        return list(self.jobs)
 
     # ── 兼容旧接口 ──
 
@@ -660,12 +630,6 @@ class BotCore:
         self._log("INFO", f"解析出 {len(processed_jobs)} 条岗位信息")
         self.jobs = processed_jobs
 
-        # 为每个岗位附加已保存的自定义打招呼语（用于预览回显）
-        for job in self.jobs:
-            url = job.get("url", "")
-            if url and url in getattr(self, "_custom_greetings", {}):
-                job["custom_greeting"] = self._custom_greetings[url]
-
     def _get_city_id(self, city_name: str) -> str:
         """获取城市编码。优先使用 API 捕获数据，再使用硬编码映射。"""
         if self._city_dict and city_name in self._city_dict:
@@ -790,8 +754,8 @@ class BotCore:
             if not self.running:
                 break
             if self._rate_limit_enabled and self.applied_count >= self._max_per_hour:
-                self._log("WARN", f"已达到每小时上限 {self._max_per_hour}，暂停 1 小时")
-                if not self._wait_or_stop(3600):
+                self._log("WARN", f"已达到每小时上限 {self._max_per_hour}，暂停 30 分钟")
+                if not self._wait_or_stop(1800):
                     break
             self._log("INFO", f"处理 [{idx+1}/{self.total_jobs}] {job.get('job_name', '未知岗位')}")
             self._random_delay(self._min_interval, self._max_interval)
@@ -1046,10 +1010,9 @@ class BotCore:
             self._log("INFO", "[v2] 已点击沟通按钮，等待输入框...")
 
             # ── 5. 输入消息（严格参考源文件：dp.ele(".input-area").input(message)） ──
-            # 优先级：岗位自定义打招呼语 > 任务级打招呼语 > 默认模板
-            custom_greeting = self._custom_greetings.get(job.get("url"), "")
-            greeting = custom_greeting or self._greeting_message or DEFAULT_GREETING
-            self._log("INFO", f"[v2] 打招呼语来源: {'岗位自定义' if custom_greeting else ('任务级' if self._greeting_message else '默认模板')}")
+            # 优先级：AI 定制化打招呼语 > 任务级模板 > 默认模板
+            greeting = self._greeting_message or DEFAULT_GREETING
+            self._log("INFO", f"[v2] 打招呼语来源: {'AI定制' if self._greeting_message else '默认模板'}")
             input_area = self.dp.ele(".input-area", timeout=10)
             if not input_area:
                 self._log("WARN", f"[v2] 未找到输入框! 当前URL: {self.dp.url}")

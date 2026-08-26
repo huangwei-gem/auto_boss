@@ -255,17 +255,6 @@ a{color:var(--accent);text-decoration:none}
 .empty-title{font-size:14px;font-weight:600;color:var(--fg-2nd)}
 .empty-desc{font-size:11px;color:var(--fg-3rd)}
 
-/* Preview modal */
-.modal-large{max-width:900px;width:90%}
-.preview-job-row{display:flex;gap:12px;padding:10px;border:1px solid var(--bd-2);border-radius:8px;margin-bottom:8px;align-items:flex-start}
-.preview-job-info{flex:1;min-width:0}
-.preview-job-name{font-size:12px;font-weight:600;color:var(--fg);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.preview-job-meta{font-size:10px;color:var(--fg-3rd);margin-top:2px}
-.preview-job-url{font-size:9px;color:var(--fg-4th);margin-top:2px;word-break:break-all}
-.preview-job-greeting{flex:1.2;min-width:0}
-.preview-job-greeting textarea{width:100%;min-height:60px;padding:6px 8px;font-size:11px;border:1px solid var(--bd-2);border-radius:6px;background:var(--side-input-bg);color:var(--fg);resize:vertical;box-sizing:border-box}
-.preview-job-greeting textarea:focus{outline:none;border-color:var(--accent)}
-
 /* Log */
 .log-area{font-family:ui-monospace,SF Mono,Menlo,Consolas,monospace;font-size:11px;line-height:1.6;padding:8px 12px}
 .log-entry{padding:2px 0;display:flex;gap:8px;word-break:break-all}
@@ -438,7 +427,7 @@ a{color:var(--accent);text-decoration:none}
       </div>
       <div class="panel-row">
         <div class="panel panel-half">
-          <div class="panel-header"><span class="panel-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg></span><span class="panel-title">岗位管理</span><div class="panel-actions"><button class="btn btn-ghost btn-sm" onclick="previewJobs()" title="预览岗位并设置打招呼语">👁 预览</button><button class="btn btn-ghost btn-sm" onclick="addJob()">+ 添加</button></div></div>
+          <div class="panel-header"><span class="panel-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg></span><span class="panel-title">岗位管理</span><div class="panel-actions"><button class="btn btn-ghost btn-sm" onclick="addJob()">+ 添加</button></div></div>
           <div class="panel-body" id="jobList"></div>
         </div>
         <div class="panel panel-half">
@@ -1086,93 +1075,6 @@ function saveJobModal() {
   renderJobs();
   updateSbarJobs();
   saveConfig();
-}
-
-// ── 岗位预览 & 自定义打招呼语 ──
-
-let previewJobsData = []; // 预览的岗位列表
-
-function previewJobs() {
-  const a = config.accounts[activeAccountIdx];
-  if (!a || !a.jobs || !a.jobs.length) {
-    addLog('WARN', '请先添加岗位搜索任务');
-    return;
-  }
-  addLog('INFO', '正在获取岗位列表...');
-  fetch('/api/preview-jobs', {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({ task_idx: 0, account_idx: activeAccountIdx })
-  })
-  .then(r => r.json())
-  .then(data => {
-    if (data.status === 'ok' && data.jobs) {
-      previewJobsData = data.jobs;
-      showPreviewModal();
-    } else {
-      addLog('ERROR', data.message || '获取岗位列表失败');
-    }
-  })
-  .catch(e => addLog('ERROR', '请求失败: ' + e));
-}
-
-function showPreviewModal() {
-  closePreviewModal();
-  const overlay = document.createElement('div');
-  overlay.className = 'modal-overlay';
-  overlay.id = 'previewModal';
-  const jobRows = previewJobsData.map((job, i) =>
-    '<div class="preview-job-row">'+
-      '<div class="preview-job-info">'+
-        '<div class="preview-job-name">'+escHtml(job.job_name||'未知岗位')+'</div>'+
-        '<div class="preview-job-meta">'+escHtml(job.company_location||'')+' · '+escHtml(job.salary||'')+'</div>'+
-        '<div class="preview-job-url">'+escHtml(job.url||'')+'</div>'+
-      '</div>'+
-      '<div class="preview-job-greeting">'+
-        '<textarea id="previewGreeting'+i+'" placeholder="留空则使用默认打招呼语" style="min-height:60px;width:100%;resize:vertical">'+escHtml(job.custom_greeting||'')+'</textarea>'+
-      '</div>'+
-    '</div>'
-  ).join('');
-  overlay.innerHTML =
-    '<div class="modal modal-large">'+
-      '<h3>预览岗位 ('+previewJobsData.length+'个)</h3>'+
-      '<div style="max-height:60vh;overflow-y:auto;margin:12px 0">'+jobRows+'</div>'+
-      '<div class="modal-actions">'+
-        '<button class="btn btn-primary" onclick="savePreviewGreetings()">保存打招呼语</button>'+
-        '<button class="btn btn-cancel" onclick="closePreviewModal()">取消</button>'+
-      '</div>'+
-    '</div>';
-  document.body.appendChild(overlay);
-}
-
-function closePreviewModal() {
-  const m = document.getElementById('previewModal');
-  if (m) m.remove();
-}
-
-function savePreviewGreetings() {
-  const greetings = {};
-  previewJobsData.forEach((job, i) => {
-    const el = document.getElementById('previewGreeting'+i);
-    if (el && el.value.trim()) {
-      greetings[job.url] = el.value.trim();
-    }
-  });
-  fetch('/api/custom-greetings', {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({ greetings: greetings })
-  })
-  .then(r => r.json())
-  .then(data => {
-    if (data.status === 'ok') {
-      addLog('INFO', '已保存 '+data.count+' 个岗位的自定义打招呼语');
-      closePreviewModal();
-    } else {
-      addLog('ERROR', data.message || '保存失败');
-    }
-  })
-  .catch(e => addLog('ERROR', '请求失败: ' + e));
 }
 
 function deleteJob(i) {

@@ -596,39 +596,6 @@ def serve_dashboard(filename):
     return abort(404)
 
 
-# ── 岗位预览 & 自定义打招呼语 ──
-
-@app.route("/api/preview-jobs", methods=["POST"])
-def api_preview_jobs():
-    """获取岗位列表（预览用，不投递）。"""
-    global _bot
-    try:
-        data = request.get_json(silent=True) or {}
-        task_idx = int(data.get("task_idx", 0))
-        acc_idx = int(data.get("account_idx", 0))
-        if _bot and hasattr(_bot, 'get_job_list'):
-            jobs = _bot.get_job_list(task_idx=task_idx)
-            return jsonify({"status": "ok", "jobs": jobs})
-        return jsonify({"status": "error", "message": "Bot 未初始化"}), 400
-    except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 500
-
-
-@app.route("/api/custom-greetings", methods=["POST"])
-def api_custom_greetings():
-    """设置岗位级别自定义打招呼语。"""
-    global _bot
-    try:
-        data = request.get_json(silent=True) or {}
-        greetings = data.get("greetings", {})
-        if _bot and hasattr(_bot, 'set_custom_greetings'):
-            _bot.set_custom_greetings(greetings)
-            return jsonify({"status": "ok", "count": len(greetings)})
-        return jsonify({"status": "error", "message": "Bot 未初始化"}), 400
-    except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 500
-
-
 
 
 
