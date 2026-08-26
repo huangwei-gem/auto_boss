@@ -54,6 +54,7 @@ def _write_header(ws):
     """写入表头。"""
     headers = [
         "时间", "岗位名称", "公司", "薪资", "城市",
+        "岗位描述(JD)", "任职要求",
         "AI匹配分", "是否匹配", "匹配理由",
         "AI优势", "AI劣势", "建议打招呼",
         "投递状态", "岗位URL", "使用的提示词",
@@ -90,6 +91,8 @@ def save_jd_analysis(
     query: str = "",
     city: str = "",
     prompt_used: str = "",
+    jd_description: str = "",
+    jd_requirements: str = "",
 ) -> str:
     """保存一条 JD + AI 分析记录到 Excel。
 
@@ -100,6 +103,8 @@ def save_jd_analysis(
         query: 搜索关键词
         city: 城市
         prompt_used: 使用的提示词摘要
+        jd_description: 岗位描述原文
+        jd_requirements: 任职要求原文
 
     Returns:
         保存的文件路径
@@ -131,6 +136,8 @@ def save_jd_analysis(
             job.get("company", ""),
             job.get("salary", ""),
             city,
+            jd_description,
+            jd_requirements,
             score,
             is_match,
             reason,
@@ -139,7 +146,7 @@ def save_jd_analysis(
             suggested,
             status,
             job.get("url", ""),
-            prompt_used[:500] if prompt_used else "",  # 限制长度
+            prompt_used[:500] if prompt_used else "",
         ]
 
         for col_idx, val in enumerate(row_data, 1):

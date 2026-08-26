@@ -967,27 +967,31 @@ class BotCore:
                 self._mark_chatted(job)
                 return True
 
-            # ── 3. 获取信息（参考源文件） ──
+            # ── 3. 获取 JD 信息（参考源文件） ──
+            job_description = ""
+            job_requirements = ""
             try:
-                boss_active = self.dp.ele(".boss-active-time", timeout=3).text
-                self._log("INFO", "上线状态: " + boss_active[:50])
+                job_desc_elem = self.dp.ele(".job-sec-text", timeout=3)
+                if job_desc_elem:
+                    job_description = job_desc_elem.text
+                    self._log("INFO", "岗位描述: " + job_description[:100] + "...")
             except Exception:
                 pass
+            # 尝试获取任职要求（可能在 .job-sec-text 或 .requirements 中）
             try:
-                company_scale = self.dp.ele(".icon-scale", timeout=3).text
-                self._log("INFO", "公司规模: " + company_scale[:50])
+                req_elem = self.dp.ele(".requirements", timeout=2)
+                if req_elem:
+                    job_requirements = req_elem.text
             except Exception:
                 pass
-            try:
-                job_desc = self.dp.ele(".job-sec-text", timeout=3).text
-                self._log("INFO", "岗位描述: " + job_desc[:100] + "...")
-            except Exception:
-                pass
-            try:
-                salary = self.dp.ele(".salary", timeout=3).text
-                self._log("INFO", "薪资: " + salary[:50])
-            except Exception:
-                pass
+            # 如果没获取到任职要求，用岗位描述代替
+            if not job_requirements:
+                job_requirements = job_description
+            # 将 JD 信息附加到 job dict
+            job["jd_description"] = job_description
+            job["jd_requirements"] = job_requirements
+            # 保存到日志，方便调试
+            self._log("INFO", f"JD 描述长度: {len(job_description)} 字符")
 
             # ── 4. 点击立即沟通（严格参考源文件：dp.ele(".btn btn-startchat").click()） ──
             self._log("INFO", f"[v2] 开始点击沟通按钮... URL: {self.dp.url}")
@@ -1333,7 +1337,10 @@ class BotCore:
                     custom_prompts = getattr(self._ai_analyzer, '_custom_prompts', {})
                     if custom_prompts:
                         prompt_used = f"System: {custom_prompts.get('system', '')[:100]}... | User: {custom_prompts.get('user', '')[:100]}..."
-                save_jd_analysis(job, ai_result, skipped, self._query, self._city, prompt_used)
+                # 提取 JD 文本
+                jd_text = job.get("jd_description", "") or ""
+                jd_req = job.get("jd_requirements", "") or ""
+                save_jd_analysis(job, ai_result, skipped, self._query, self._city, prompt_used, jd_text, jd_req)
             except Exception:
                 pass
         except Exception:
