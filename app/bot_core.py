@@ -1327,7 +1327,13 @@ class BotCore:
             # 同步保存到 Excel
             try:
                 from excel_exporter import save_jd_analysis
-                save_jd_analysis(job, ai_result, skipped, self._query, self._city)
+                # 收集使用的提示词摘要
+                prompt_used = ""
+                if hasattr(self, '_ai_analyzer') and self._ai_analyzer:
+                    custom_prompts = getattr(self._ai_analyzer, '_custom_prompts', {})
+                    if custom_prompts:
+                        prompt_used = f"System: {custom_prompts.get('system', '')[:100]}... | User: {custom_prompts.get('user', '')[:100]}..."
+                save_jd_analysis(job, ai_result, skipped, self._query, self._city, prompt_used)
             except Exception:
                 pass
         except Exception:

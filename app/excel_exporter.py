@@ -56,7 +56,7 @@ def _write_header(ws):
         "时间", "岗位名称", "公司", "薪资", "城市",
         "AI匹配分", "是否匹配", "匹配理由",
         "AI优势", "AI劣势", "建议打招呼",
-        "投递状态", "岗位URL",
+        "投递状态", "岗位URL", "使用的提示词",
     ]
     for col_idx, header in enumerate(headers, 1):
         cell = ws.cell(row=1, column=col_idx, value=header)
@@ -89,6 +89,7 @@ def save_jd_analysis(
     skipped: bool = False,
     query: str = "",
     city: str = "",
+    prompt_used: str = "",
 ) -> str:
     """保存一条 JD + AI 分析记录到 Excel。
 
@@ -98,6 +99,7 @@ def save_jd_analysis(
         skipped: 是否跳过
         query: 搜索关键词
         city: 城市
+        prompt_used: 使用的提示词摘要
 
     Returns:
         保存的文件路径
@@ -107,7 +109,8 @@ def save_jd_analysis(
         # 按日期分文件
         date_str = time.strftime("%Y-%m-%d")
         filename = f"JD分析_{date_str}.xlsx"
-        filepath = os.path.join(JD_DIR, filename)
+        filepath = os.path.join(JD_DIR, date_str, filename)
+        os.makedirs(os.path.dirname(filepath), exist_ok=True)
 
         wb = _get_workbook(filepath)
         ws = wb["JD分析记录"]
@@ -136,6 +139,7 @@ def save_jd_analysis(
             suggested,
             status,
             job.get("url", ""),
+            prompt_used[:500] if prompt_used else "",  # 限制长度
         ]
 
         for col_idx, val in enumerate(row_data, 1):

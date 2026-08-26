@@ -255,6 +255,17 @@ a{color:var(--accent);text-decoration:none}
 .empty-title{font-size:14px;font-weight:600;color:var(--fg-2nd)}
 .empty-desc{font-size:11px;color:var(--fg-3rd)}
 
+/* Modal large variant */
+.modal-large{max-width:800px;width:90%}
+.modal-large textarea{width:100%;padding:8px 12px;font-size:12px;border:1px solid var(--bd-2);border-radius:8px;background:var(--side-input-bg);color:var(--fg);resize:vertical;box-sizing:border-box;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+.modal-large textarea:focus{outline:none;border-color:var(--accent)}
+
+/* Excel file list */
+.excel-file-row{display:flex;align-items:center;gap:12px;padding:10px 12px;border:1px solid var(--bd-2);border-radius:8px;margin-bottom:8px}
+.excel-file-info{flex:1;min-width:0}
+.excel-file-name{font-size:12px;font-weight:600;color:var(--fg)}
+.excel-file-meta{font-size:10px;color:var(--fg-3rd);margin-top:2px}
+
 /* Log */
 .log-area{font-family:ui-monospace,SF Mono,Menlo,Consolas,monospace;font-size:11px;line-height:1.6;padding:8px 12px}
 .log-entry{padding:2px 0;display:flex;gap:8px;word-break:break-all}
@@ -354,6 +365,7 @@ a{color:var(--accent);text-decoration:none}
         <div class="side-btn-row" style="margin-top:6px;flex-wrap:wrap">
           <button class="side-btn side-btn-ghost side-btn-sm" onclick="addAiProvider()">➕ 添加 AI 接口</button>
           <button class="side-btn side-btn-ghost side-btn-sm" onclick="showResumeModal()">📄 编辑简历</button>
+          <button class="side-btn side-btn-ghost side-btn-sm" onclick="showPromptModal()">✏️ 编辑提示词</button>
           <button class="side-btn side-btn-ghost side-btn-sm" onclick="testAi()">⚡ 测试 AI</button>
         </div>
         <div id="aiStatus" style="font-size:10px;color:var(--fg-3rd);margin-top:4px;word-break:break-all"></div>
@@ -422,6 +434,7 @@ a{color:var(--accent);text-decoration:none}
             <button class="btn btn-danger btn-sm" id="btnStopAll" onclick="stopAll()" style="display:none">■ 停止</button>
             <button class="btn btn-ghost btn-sm" id="btnConfirmLogin" onclick="confirmLogin()" style="display:none">✓ 确认登录</button>
             <button class="btn btn-ghost btn-sm" onclick="saveConfig()">💾 保存配置</button>
+            <button class="btn btn-ghost btn-sm" onclick="showExcelModal()">📊 Excel 导出</button>
           </div>
         </div>
       </div>
@@ -560,6 +573,91 @@ function testAi() {
     if (status) status.textContent = '✗ 测试失败: ' + e.message;
     addLog('ERROR', 'AI 测试失败: ' + e.message);
   });
+}
+
+function showExcelModal() {
+  fetch('/api/excel/files').then(r => r.json()).then(data => {
+    if (data.status !== 'ok') { addLog('ERROR', '加载文件列表失败'); return; }
+    const files = data.files || [];
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    overlay.id = 'excelModal';
+    let listHtml = '';
+    if (files.length === 0) {
+      listHtml = '<div class="empty-state"><div class="empty-icon">📊</div><div class="empty-title">暂无导出文件</div><div class="empty-desc">投递岗位后会自动生成 Excel 记录</div></div>';
+    } else {
+      listHtml = files.map(f =>
+        '<div class="excel-file-row">'+
+          '<div class="excel-file-info">'+
+            '<div class="excel-file-name">'+escHtml(f.name)+'</div>'+
+            '<div class="excel-file-meta">'+escHtml(new Date(f.mtime*1000).toLocaleString())+' · '+(f.size/1024).toFixed(1)+' KB</div>'+
+          '</div>'+
+          '<a class="btn btn-ghost btn-sm" href="/api/excel/download?filename='+encodeURIComponent(f.name)+'" download>下载</a>'+
+        '</div>'
+      ).join('');
+    }
+    overlay.innerHTML =
+      '<div class="modal">'+
+        '<h3>📊 Excel 导出</h3>'+
+        '<div style="max-height:50vh;overflow-y:auto;margin:12px 0">'+listHtml+'</div>'+
+        '<div class="modal-actions"><button class="btn btn-cancel" onclick="closeExcelModal()">关闭</button></div>'+
+      '</div>';
+    document.body.appendChild(overlay);
+  }).catch(e => addLog('ERROR', '加载文件列表失败: ' + e));
+}
+
+function closeExcelModal() {
+  const m = document.getElementById('excelModal');
+  if (m) m.remove();
+}
+
+function showPromptModal() {
+  fetch('/api/ai/prompts').then(r => r.json()).then(data => {
+    if (data.status !== 'ok') { addLog('ERROR', '加载提示词失败'); return; }
+    const prompts = data.prompts || {};
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    overlay.id = 'promptModal';
+    overlay.innerHTML =
+      '<div class="modal modal-large">'+
+        '<h3>✏️ 编辑 AI 提示词</h3>'+
+        '<div class="modal-field"><label>System Prompt（系统提示词）</label>'+
+          '<textarea id="promptSystem" style="min-height:120px;width:100%;resize:vertical;box-sizing:border-box">'+escHtml(prompts.system||'')+'</textarea></div>'+
+        '<div class="modal-field"><label>User Prompt（用户提示词）<span style="font-size:10px;color:var(--fg-3rd);margin-left:8px">支持占位符: {job_name} {salary} {description} {requirements} {company} {school} {major} {degree} {skills} {experience} {target_position}</span></label>'+
+          '<textarea id="promptUser" style="min-height:200px;width:100%;resize:vertical;box-sizing:border-box">'+escHtml(prompts.user||'')+'</textarea></div>'+
+        '<div class="modal-actions">'+
+          '<button class="btn btn-primary" onclick="savePromptModal()">保存</button>'+
+          '<button class="btn btn-cancel" onclick="closePromptModal()">取消</button>'+
+        '</div>'+
+      '</div>';
+    document.body.appendChild(overlay);
+  }).catch(e => addLog('ERROR', '加载提示词失败: ' + e));
+}
+
+function closePromptModal() {
+  const m = document.getElementById('promptModal');
+  if (m) m.remove();
+}
+
+function savePromptModal() {
+  const system = document.getElementById('promptSystem').value;
+  const user = document.getElementById('promptUser').value;
+  if (!system.trim() || !user.trim()) { addLog('ERROR', '提示词不能为空'); return; }
+  fetch('/api/ai/prompts', {
+    method: 'PUT',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ prompts: { system: system, user: user } })
+  })
+  .then(r => r.json())
+  .then(data => {
+    if (data.status === 'ok') {
+      addLog('SUCCESS', 'AI 提示词已保存');
+      closePromptModal();
+    } else {
+      addLog('ERROR', data.message || '保存失败');
+    }
+  })
+  .catch(e => addLog('ERROR', '保存失败: ' + e));
 }
 
 function showResumeModal() {
