@@ -1,59 +1,61 @@
-# Python
 __pycache__/
-*.py[cod]
-*$py.class
-*.so
-.Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
+*.pyc
+*.pyo
+*.bak
+*.bak2
+*.bak3
+*.bak4
+*.bak5
+*.bak_*
+*.bak_final
+*.bak_full
+*.bak_pre_final
 *.egg-info/
-.installed.cfg
-*.egg
-
-# Virtual environment
+*.log
+_fix_*
+_check_*.py
+_check_*.js
+check_*.py
+compare_*.py
+fetch_*.py
+find_*.py
+fix_*.py
+merge_template.py
+source_reference.py
+test.py
+test_*.py
+update_*.py
+verify_*.py
+write_*.py
+webbridge_req.json
+snapshot_result.json
+taste_skill.md
+test_screenshot.png
 .venv/
 venv/
-ENV/
-
-# IDE
+env/
 .vscode/
 .idea/
 *.swp
 *.swo
 *~
-
-# OS
 .DS_Store
-Thumbs.db
 
-# Bot data
-bot_config.json
-chats_log.json
-zhipin_cookies
-dp_configs.ini
+*.current_backup
 
-# Chrome portable
-Chrome/
+# ── 敏感文件：包含 API Key / Cookie，禁止提交 ──
+app/data/bot_config.json
+app/data/zhipin_cookies.json
+app/data/ai_cache.json
+app/data/chats_log.json
+app/data/chatted_jobs.json
+app/data/*_cookies.json
+app/data/*.cookie.json
+app/data/jd_analysis/
 
-# Project data
-data/
-ref/
-
-# Distribution
-dist/
-build/
-*.spec
-
-# Session-local notes & test scripts
-*_TODO.md
-_test_*.py
+# 旧路径兼容（迁移后可删）
+web_app/bot_config.json
+web_app/zhipin_cookies.json
+web_app/ai_cache.json
+web_app/*_cookies.json
+web_app/*.cookie.json
