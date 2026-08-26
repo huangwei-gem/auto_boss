@@ -128,6 +128,9 @@ def save_jd_analysis(
 
     Returns:
         保存的文件路径
+
+    Raises:
+        PermissionError: 文件被占用时抛出
     """
     _ensure_jd_dir()
     with _lock:
@@ -182,7 +185,15 @@ def save_jd_analysis(
                 cell.fill = SKIP_FILL
 
         _auto_width(ws)
-        wb.save(filepath)
+        try:
+            wb.save(filepath)
+        except PermissionError:
+            # 文件被占用，尝试用新文件名
+            ts = time.strftime("%Y%m%d_%H%M%S")
+            alt_filename = f"JD分析记录_{ts}.xlsx"
+            alt_filepath = os.path.join(JD_DIR, alt_filename)
+            wb.save(alt_filepath)
+            return alt_filepath
         return filepath
 
 

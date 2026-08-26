@@ -699,6 +699,7 @@ class BotCore:
                     providers=providers,
                     match_threshold=self._ai_threshold,
                     log_callback=lambda msg: self._log("INFO", msg),
+                    prompts=self._custom_prompts,
                 )
             else:
                 # 单 AI 模式（向后兼容）
