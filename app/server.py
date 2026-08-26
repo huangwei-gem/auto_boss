@@ -929,6 +929,63 @@ def api_ai_stats():
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
+# ── AI 提示词管理 ──
+
+@app.route("/api/ai/prompts", methods=["GET"])
+def api_ai_prompts_get():
+    """获取当前 AI 提示词。"""
+    try:
+        prompts = _config.get("ai", {}).get("prompts", {})
+        # 如果没有自定义提示词，返回默认模板
+        if not prompts:
+            from ai_analyzer import AIAnalyzer
+            prompts = {
+                "system": "你是 Boss直聘智能投递助手的岗位匹配分析专家。你的任务是分析招聘岗位与求职者简历的匹配程度，给出评分和详细理由。请按 JSON 格式返回结果。",
+                "user": (
+                    "【求职者简历】\n"
+                    "教育背景：{school} {major} {degree}\n"
+                    "技能：{skills}\n"
+                    "工作经验：{experience}\n"
+                    "求职意向：{target_position}\n\n"
+                    "【招聘岗位】\n"
+                    "岗位名称：{job_name}\n"
+                    "薪资：{salary}\n"
+                    "岗位描述：{description}\n"
+                    "任职要求：{requirements}\n"
+                    "公司：{company}\n\n"
+                    "请分析匹配度，按以下 JSON 格式返回（不要包含其他内容）：\n"
+                    '{\n  "score": 0-100,\n  "is_match": true/false,\n'
+                    '  "reason": "匹配分析简要说明",\n'
+                    '  "strengths": ["优势1", "优势2"],\n'
+                    '  "weaknesses": ["劣势1", "劣势2"],\n'
+                    '  "suggested_greeting": "基于岗位要求生成的个性化打招呼消息"\n}'
+                ),
+            }
+        return jsonify({"status": "ok", "prompts": prompts})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route("/api/ai/prompts", methods=["PUT"])
+def api_ai_prompts_put():
+    """保存 AI 提示词。"""
+    global _config
+    try:
+        data = request.get_json(silent=True) or {}
+        prompts = data.get("prompts", {})
+        if not isinstance(prompts, dict):
+            return jsonify({"status": "error", "message": "prompts 必须是对象"}), 400
+        _config.setdefault("ai", {})["prompts"] = prompts
+        save_config(_config)
+        # 同步更新分析器的提示词
+        global _bot
+        if _bot and hasattr(_bot, '_ai_analyzer') and _bot._ai_analyzer:
+            _bot._ai_analyzer.set_prompts(prompts)
+        return jsonify({"status": "ok", "prompts": prompts})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
 @app.route("/api/excel/files", methods=["GET"])
 def api_excel_files():
     """获取 Excel 分析文件列表。"""

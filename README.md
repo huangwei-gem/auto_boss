@@ -16,19 +16,38 @@
 ### 1. 安装依赖
 
 ```bash
+# Windows
 python -m venv venv
 venv\Scripts\pip install -r requirements.txt
+
+# Mac/Linux
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
 ```
 
 ### 2. 启动
 
 ```bash
-# 方式一：双击启动.bat
-# 方式二：命令行
+# Windows：双击 启动.bat，或命令行
 venv\Scripts\python run.py
+
+# Mac/Linux
+source venv/bin/activate
+python run.py
 ```
 
 访问 http://127.0.0.1:5000
+
+### 3. 首次配置
+
+1. 浏览器访问 http://127.0.0.1:5000
+2. 在 Web 界面中配置：
+   - **Boss直聘 Cookie**：登录 Boss直聘后，在浏览器开发者工具中复制 Cookie 上传
+   - **AI API Key**：填入你的 Agnes 或其他兼容 API Key
+   - **岗位配置**：设置搜索关键词、城市、打招呼语等
+   - **简历信息**：填写学校、专业、技能等（用于 AI 匹配分析）
+3. 参考 `app/data/bot_config.example.json` 了解配置格式
 
 ## 项目结构
 
@@ -50,7 +69,13 @@ boss-auto-apply/
 
 ## 配置说明
 
-首次启动后在 Web 界面配置：
-- Boss直聘 Cookie
-- AI API Key
+首次启动后在 Web 界面配置（参考 `app/data/bot_config.example.json`）：
+- Boss直聘 Cookie（登录后从浏览器复制）
+- AI API Key（Agnes 或其他兼容 OpenAI 格式的 API）
 - 岗位关键词、薪资范围等筛选条件
+- 简历信息（学校、专业、技能等）
+
+## 跨平台支持
+
+- **Windows**：双击 `启动.bat` 即可
+- **Mac/Linux**：终端运行 `source venv/bin/activate && python run.py`

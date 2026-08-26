@@ -71,6 +71,7 @@ class AIAnalyzer:
         cache_enabled: bool = True,
         cache_ttl_hours: int = 24,
         log_callback: Optional[Callable] = None,
+        prompts: Optional[dict] = None,
     ):
         self.api_key = api_key
         self.api_base = api_base.rstrip("/")
@@ -79,6 +80,7 @@ class AIAnalyzer:
         self.cache_enabled = cache_enabled
         self.cache_ttl = cache_ttl_hours * 3600
         self.log_cb = log_callback
+        self._custom_prompts = prompts or {}
 
         # 统计
         self.analyzed_count = 0
@@ -165,16 +167,22 @@ class AIAnalyzer:
                 progress_cb(i + 1, total, result)
         return results
 
-    def _build_prompt(self, job: dict) -> list:
-        """构建分析 prompt。"""
-        resume = getattr(self, "_resume", {})
+    def set_prompts(self, prompts: dict):
+        """设置自定义提示词。"""
+        self._custom_prompts = prompts or {}
 
-        system_msg = (
+    def _build_prompt(self, job: dict) -> list:
+        """构建分析 prompt。优先使用自定义提示词。"""
+        resume = getattr(self, "_resume", {})
+        custom_system = self._custom_prompts.get("system", "")
+        custom_user = self._custom_prompts.get("user", "")
+
+        system_msg = custom_system or (
             "你是 Boss直聘智能投递助手的岗位匹配分析专家。你的任务是分析招聘岗位与求职者简历的匹配程度，"
             "给出评分和详细理由。请按 JSON 格式返回结果。"
         )
 
-        user_msg = (
+        user_msg = custom_user or (
             "【求职者简历】\n"
             f"教育背景：{resume.get('education', {}).get('school', '')} "
             f"{resume.get('education', {}).get('major', '')} "
@@ -195,6 +203,25 @@ class AIAnalyzer:
             '  "weaknesses": ["劣势1", "劣势2"],\n'
             '  "suggested_greeting": "基于岗位要求生成的个性化打招呼消息"\n}'
         )
+
+        # 如果自定义 user prompt 包含占位符，填充它们
+        if custom_user:
+            try:
+                user_msg = custom_user.format(
+                    job_name=job.get("job_name", ""),
+                    salary=job.get("salary", ""),
+                    description=job.get("description", ""),
+                    requirements=job.get("requirements", ""),
+                    company=job.get("company", ""),
+                    school=resume.get("education", {}).get("school", ""),
+                    major=resume.get("education", {}).get("major", ""),
+                    degree=resume.get("education", {}).get("degree", ""),
+                    skills=", ".join(resume.get("skills", [])),
+                    experience=resume.get("experience", ""),
+                    target_position=resume.get("target_position", ""),
+                )
+            except (KeyError, ValueError):
+                pass  # 占位符格式不对就用原始模板
 
         return [
             {"role": "system", "content": system_msg},

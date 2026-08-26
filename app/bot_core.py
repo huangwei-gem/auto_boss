@@ -63,6 +63,9 @@ SELECTOR_SCALE = ".icon-scale"
 SELECTOR_REC_JOB_LIST = ".rec-job-list"
 SELECTOR_JOB_NAME = ".job-name"
 
+# 默认打招呼语模板（当任务和岗位都未设置时使用）
+DEFAULT_GREETING = "您好，我是双一流的本科，应聘数据分析岗位。在校系统学习数据分析相关知识，掌握Excel、基础SQL与数据整理技能，具备数据思维。做事严谨细心，学习能力强，愿意踏实积累。十分认可贵公司，希望能获得面试机会。"
+
 # 热门城市编码映射（Boss直聘使用）
 CITY_CODES = {
     "北京": "101010100", "上海": "101020100", "广州": "101280100",
@@ -492,8 +495,10 @@ class BotCore:
             return False
 
     def _init_browser(self) -> bool:
-        """初始化浏览器。"""
+        """初始化浏览器。如果已经初始化则复用。"""
         try:
+            if self.dp is not None:
+                return True  # 复用已有浏览器
             co = ChromiumOptions()
             co.set_argument("--no-sandbox")
             co.set_argument("--disable-gpu")
@@ -713,10 +718,10 @@ class BotCore:
             return None
 
     def _analyze_job_with_ai(self, job: dict):
-        """用 AI 分析岗位匹配度。返回匹配结果 dict，未启用时返回 None。"""
+        """用 AI 分析岗位匹配度。返回 (匹配结果, 耗时秒数)，未启用时返回 (None, 0)。"""
         analyzer = self._init_ai()
         if not analyzer:
-            return None
+            return None, 0
         ai_job = {
             "job_name": job.get("job_name", ""),
             "salary": job.get("salary", ""),
@@ -726,14 +731,17 @@ class BotCore:
             "url": job.get("url", ""),
         }
         try:
+            import time as _time
+            _start = _time.time()
             result = analyzer.analyze_job(ai_job)
+            duration = _time.time() - _start
             score = result.get("score", 50)
             is_match = result.get("is_match", True)
-            self._log("INFO", f"🤖 AI 匹配度: {score}/100 —— {result.get('reason', '')[:80]}")
-            return result if (is_match and score >= self._ai_threshold) else None
+            self._log("INFO", f"🤖 AI 匹配度: {score}/100 ({duration:.1f}s) —— {result.get('reason', '')[:80]}")
+            return (result, duration) if (is_match and score >= self._ai_threshold) else (None, duration)
         except Exception as e:
             self._log("WARN", f"AI 分析异常，按通过处理: {e}")
-            return None
+            return None, 0
 
     def _step_browse_jobs(self):
         """遍历岗位列表并投递。"""
@@ -749,38 +757,42 @@ class BotCore:
             if not self.running:
                 break
             if self._rate_limit_enabled and self.applied_count >= self._max_per_hour:
-                self._log("WARN", f"已达到每小时上限 {self._max_per_hour}，暂停 1 小时")
-                if not self._wait_or_stop(3600):
+                self._log("WARN", f"已达到每小时上限 {self._max_per_hour}，暂停 30 分钟")
+                if not self._wait_or_stop(1800):
                     break
             self._log("INFO", f"处理 [{idx+1}/{self.total_jobs}] {job.get('job_name', '未知岗位')}")
             self._random_delay(self._min_interval, self._max_interval)
-            # AI 智能匹配：不达标的岗位直接跳过
-            has_ai = self._ai_enabled and (self._ai_api_key or self._ai_cfg.get("providers", []))
-            if has_ai:
-                ai_result = self._analyze_job_with_ai(job)
-                if ai_result is None and self._init_ai() is not None:
-                    self._log("WARN", f"🤖 AI 判定不匹配，跳过: {job.get('job_name', '')}")
-                    self.skipped_count += 1
-                    self._save_chat_log(job, skipped=True)
-                    self._report_progress()
-                    continue
-                if ai_result and ai_result.get("suggested_greeting"):
-                    self._greeting_message = ai_result["suggested_greeting"]
-            else:
-                ai_result = None
+            # 先检查是否已沟通过（避免浪费 API 调用）
             if self._is_already_chatted(job):
                 self._log("INFO", f"⏭️ 已沟通过: {job.get('job_name', '')}")
                 self.skipped_count += 1
                 self._report_progress()
                 self._save_chat_log(job, skipped=True)
                 continue
+            # AI 智能匹配：不达标的岗位直接跳过
+            has_ai = self._ai_enabled and (self._ai_api_key or self._ai_cfg.get("providers", []))
+            if has_ai:
+                ai_result, ai_duration = self._analyze_job_with_ai(job)
+                if ai_result is None and self._init_ai() is not None:
+                    self._log("WARN", f"🤖 AI 判定不匹配，跳过: {job.get('job_name', '')}")
+                    # 仍然抓取 JD 用于 Excel 导出
+                    self._fetch_jd_for_job(job)
+                    self.skipped_count += 1
+                    self._save_chat_log(job, skipped=True, ai_result=None, ai_duration=ai_duration)
+                    self._report_progress()
+                    continue
+                if ai_result and ai_result.get("suggested_greeting"):
+                    self._greeting_message = ai_result["suggested_greeting"]
+            else:
+                ai_result = None
+                ai_duration = 0
             if not self._check_login_expired():
                 break
             try:
                 success = self._apply_job(job)
                 if success:
                     self.applied_count += 1
-                    self._save_chat_log(job, skipped=False, ai_result=ai_result)
+                    self._save_chat_log(job, skipped=False, ai_result=ai_result, ai_duration=ai_duration)
                     self._log("SUCCESS", f"✅ 已投递: {job.get('job_name', '')}")
                 else:
                     self.skipped_count += 1
@@ -804,6 +816,32 @@ class BotCore:
                     break
             self._report_progress()
 
+
+    def _fetch_jd_for_job(self, job: dict):
+        """为 AI 跳过的岗位抓取 JD 信息（仅读取详情页，不投递）。"""
+        url = job.get("url", "")
+        if not url:
+            return
+        try:
+            self.dp.run_js(f"window.location.href = '{url}'")
+            self._random_delay(3, 5)
+            try:
+                job_desc_elem = self.dp.ele(".job-sec-text", timeout=3)
+                if job_desc_elem:
+                    job["jd_description"] = job_desc_elem.text
+            except Exception:
+                pass
+            try:
+                req_elem = self.dp.ele(".requirements", timeout=2)
+                if req_elem:
+                    job["jd_requirements"] = req_elem.text
+            except Exception:
+                pass
+            if not job.get("jd_requirements"):
+                job["jd_requirements"] = job.get("jd_description", "")
+            self._log("INFO", f"[JD] 已抓取: {job.get('job_name','')} ({len(job.get('jd_description',''))}字)")
+        except Exception as e:
+            self._log("WARN", f"[JD] 抓取失败: {e}")
 
     def _handle_disconnect(self) -> bool:
         """处理页面断开连接，尝试恢复。"""
@@ -958,31 +996,34 @@ class BotCore:
 
             btn_text = chat_btn.text
             if "继续沟通" in btn_text:
-                self._log("INFO", "之前已经沟通过，不需要再沟通")
-                self._mark_chatted(job)
-                return True
+                self._log("INFO", "该岗位之前已投递过（继续沟通），跳过")
+                return False
 
-            # ── 3. 获取信息（参考源文件） ──
+            # ── 3. 获取 JD 信息（参考源文件） ──
+            job_description = ""
+            job_requirements = ""
             try:
-                boss_active = self.dp.ele(".boss-active-time", timeout=3).text
-                self._log("INFO", "上线状态: " + boss_active[:50])
+                job_desc_elem = self.dp.ele(".job-sec-text", timeout=3)
+                if job_desc_elem:
+                    job_description = job_desc_elem.text
+                    self._log("INFO", "岗位描述: " + job_description[:100] + "...")
             except Exception:
                 pass
+            # 尝试获取任职要求（可能在 .job-sec-text 或 .requirements 中）
             try:
-                company_scale = self.dp.ele(".icon-scale", timeout=3).text
-                self._log("INFO", "公司规模: " + company_scale[:50])
+                req_elem = self.dp.ele(".requirements", timeout=2)
+                if req_elem:
+                    job_requirements = req_elem.text
             except Exception:
                 pass
-            try:
-                job_desc = self.dp.ele(".job-sec-text", timeout=3).text
-                self._log("INFO", "岗位描述: " + job_desc[:100] + "...")
-            except Exception:
-                pass
-            try:
-                salary = self.dp.ele(".salary", timeout=3).text
-                self._log("INFO", "薪资: " + salary[:50])
-            except Exception:
-                pass
+            # 如果没获取到任职要求，用岗位描述代替
+            if not job_requirements:
+                job_requirements = job_description
+            # 将 JD 信息附加到 job dict
+            job["jd_description"] = job_description
+            job["jd_requirements"] = job_requirements
+            # 保存到日志，方便调试
+            self._log("INFO", f"JD 描述长度: {len(job_description)} 字符")
 
             # ── 4. 点击立即沟通（严格参考源文件：dp.ele(".btn btn-startchat").click()） ──
             self._log("INFO", f"[v2] 开始点击沟通按钮... URL: {self.dp.url}")
@@ -1005,7 +1046,9 @@ class BotCore:
             self._log("INFO", "[v2] 已点击沟通按钮，等待输入框...")
 
             # ── 5. 输入消息（严格参考源文件：dp.ele(".input-area").input(message)） ──
-            greeting = self._greeting_message or "您好，我是双一流的本科，应聘数据分析岗位。在校系统学习数据分析相关知识，掌握Excel、基础SQL与数据整理技能，具备数据思维。做事严谨细心，学习能力强，愿意踏实积累。十分认可贵公司，希望能获得面试机会。"
+            # 优先级：AI 定制化打招呼语 > 任务级模板 > 默认模板
+            greeting = self._greeting_message or DEFAULT_GREETING
+            self._log("INFO", f"[v2] 打招呼语来源: {'AI定制' if self._greeting_message else '默认模板'}")
             input_area = self.dp.ele(".input-area", timeout=10)
             if not input_area:
                 self._log("WARN", f"[v2] 未找到输入框! 当前URL: {self.dp.url}")
@@ -1052,6 +1095,9 @@ class BotCore:
                 self._random_delay(1, 2)
             except Exception:
                 pass
+
+            # 投递成功
+            return True
 
         except PageDisconnectedError:
             self._log("WARN", "投递过程中页面连接断开")
@@ -1166,7 +1212,6 @@ class BotCore:
             if btn:
                 btn.click.to_upload(abs_path)
                 self._random_delay(2, 3)
-                self._log("INFO", f"已上传图片: {os.path.basename(img_path)}")
                 return True
         except Exception:
             pass
@@ -1177,12 +1222,10 @@ class BotCore:
             if file_input:
                 file_input.input(abs_path)
                 self._random_delay(1, 2)
-                self._log("INFO", f"已上传图片(文件框): {os.path.basename(img_path)}")
                 return True
         except Exception:
             pass
 
-        self._log("WARN", f"上传图片失败: {os.path.basename(img_path)}")
         return False
 
     def _random_delay(self, min_sec: float, max_sec: float):
@@ -1298,7 +1341,7 @@ class BotCore:
 
     # ── 聊天日志 ──
 
-    def _save_chat_log(self, job: dict, skipped: bool = False, ai_result: dict = None):
+    def _save_chat_log(self, job: dict, skipped: bool = False, ai_result: dict = None, ai_duration: float = 0):
         try:
             logs = []
             if os.path.exists(CHATS_LOG_FILE):
@@ -1320,7 +1363,18 @@ class BotCore:
             # 同步保存到 Excel
             try:
                 from excel_exporter import save_jd_analysis
-                save_jd_analysis(job, ai_result, skipped, self._query, self._city)
+                import hashlib
+                # 生成提示词版本号（基于当前 prompt 的 hash 前 8 位）
+                prompt_version = ""
+                if hasattr(self, '_ai_analyzer') and self._ai_analyzer:
+                    custom_prompts = getattr(self._ai_analyzer, '_custom_prompts', {})
+                    if custom_prompts:
+                        prompt_str = custom_prompts.get("system", "") + custom_prompts.get("user", "")
+                        prompt_version = hashlib.md5(prompt_str.encode()).hexdigest()[:8]
+                # 提取 JD 文本
+                jd_text = job.get("jd_description", "") or ""
+                jd_req = job.get("jd_requirements", "") or ""
+                save_jd_analysis(job, ai_result, skipped, self._query, self._city, prompt_version, jd_text, jd_req, ai_duration)
             except Exception:
                 pass
         except Exception:
