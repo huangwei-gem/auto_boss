@@ -1,0 +1,86 @@
+{
+  "accounts": [
+    {
+      "cookie_file": "zhipin_cookies.json",
+      "enabled": true,
+      "image_files": [],
+      "jobs": [
+        {
+          "city": "长沙",
+          "enabled": true,
+          "greeting_message": "您好，我是双一流的本科，应聘数据分析岗位。在校系统学习数据分析相关知识，掌握Excel、基础SQL与数据整理技能，具备数据思维。做事严谨细心，学习能力强，愿意踏实积累。十分认可贵公司，希望能获得面试机会。",
+          "image_files": [
+            "dashboard/你的图片1.png",
+            "dashboard/你的图片2.png"
+          ],
+          "query": "数据分析",
+          "scroll_pages": 5
+        }
+      ],
+      "message_interval_max": 8,
+      "message_interval_min": 3,
+      "name": "主账号"
+    }
+  ],
+  "ai": {
+    "enabled": true,
+    "api_key": "你的API Key",
+    "api_base": "https://apihub.agnes-ai.com/v1",
+    "model": "agnes-2.5-flash",
+    "match_threshold": 70,
+    "providers": [
+      {
+        "api_base": "https://apihub.agnes-ai.com/v1",
+        "api_key": "你的API Key",
+        "model": "agnes-2.5-flash",
+        "name": "Agnes",
+        "timeout": 30
+      }
+    ]
+  },
+  "browser": {
+    "headless": false,
+    "viewport_width": 1280,
+    "viewport_height": 800,
+    "page_load_timeout": 30,
+    "custom_user_agent": "",
+    "proxy": ""
+  },
+  "login": {
+    "wait_timeout": 300,
+    "clear_cookies_on_failure": true
+  },
+  "rate_limit": {
+    "enabled": true,
+    "max_per_hour": 30,
+    "max_per_day": 100
+  },
+  "resume": {
+    "school": "某某大学",
+    "major": "统计学",
+    "degree": "本科",
+    "skills": [
+      "Excel",
+      "SQL",
+      "Python",
+      "数据分析"
+    ],
+    "experience": "负责业务数据报表与洞察分析",
+    "target_position": "数据分析师",
+    "self_intro": "做事严谨细心，学习能力强"
+  },
+  "retry": {
+    "max_attempts": 3,
+    "base_delay": 2,
+    "backoff_factor": 2
+  },
+  "schedule": {
+    "enabled": false,
+    "random_delay_minutes": 15,
+    "times": [
+      "09:00",
+      "14:00",
+      "19:00"
+    ]
+  }
+}
