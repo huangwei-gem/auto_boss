@@ -267,11 +267,8 @@ def api_add_account():
     try:
         data = request.get_json(silent=True) or {}
         idx = len(_config["accounts"])
-        cookie_file = data.get("cookie_file", "zhipin_cookies.json")
-        # 验证 cookie 文件是否存在，如果不存在则使用默认值
-        cookie_path = os.path.join(DATA_DIR, cookie_file)
-        if not os.path.isfile(cookie_path):
-            cookie_file = "zhipin_cookies.json"
+        # 每个新账号使用独立的 cookie 文件
+        cookie_file = f"zhipin_cookies_acc{idx + 1}.json"
         _config["accounts"].append({
             "name": f"账号{idx + 1}",
             "enabled": True,
@@ -601,18 +598,24 @@ def serve_dashboard(filename):
 
 @app.route("/api/cookies/upload", methods=["POST"])
 def api_upload_cookies():
-    """上传 Cookie 文件。"""
+    """上传 Cookie 文件。保存到当前账号指定的 cookie_file。"""
     f = request.files.get("file")
     if not f or not f.filename:
         return jsonify({"status": "error", "message": "未选择文件"}), 400
     try:
         content_data = f.read().decode("utf-8")
         json.loads(content_data)  # 验证 JSON 格式
-        safe_name = os.path.basename(f.filename) if f.filename else "zhipin_cookies.json"
-        dst = os.path.join(DATA_DIR, safe_name)
+        # 获取当前账号指定的 cookie 文件名
+        account_idx = request.form.get("account_idx", type=int)
+        if account_idx is not None and 0 <= account_idx < len(_config.get("accounts", [])):
+            cookie_file = _config["accounts"][account_idx].get("cookie_file", f"zhipin_cookies_acc{account_idx + 1}.json")
+        else:
+            safe_name = os.path.basename(f.filename) if f.filename else "zhipin_cookies.json"
+            cookie_file = safe_name
+        dst = os.path.join(DATA_DIR, cookie_file)
         with open(dst, "w", encoding="utf-8") as out:
             out.write(content_data)
-        return jsonify({"status": "ok", "filename": safe_name})
+        return jsonify({"status": "ok", "filename": cookie_file})
     except json.JSONDecodeError:
         return jsonify({"status": "error", "message": "无效的 JSON 格式"}), 400
     except Exception as e:
@@ -993,6 +996,17 @@ def api_excel_files():
         from excel_exporter import get_analysis_files
         files = get_analysis_files()
         return jsonify({"status": "ok", "files": files})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route("/api/excel/sync", methods=["POST"])
+def api_excel_sync():
+    """从 chats_log.json 同步所有历史记录到 Excel。"""
+    try:
+        from excel_exporter import export_all_from_chats_log
+        count = export_all_from_chats_log()
+        return jsonify({"status": "ok", "count": count, "message": f"已同步 {count} 条记录到 Excel"})
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 

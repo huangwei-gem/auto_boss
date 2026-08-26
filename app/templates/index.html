@@ -542,7 +542,7 @@ function toggleAiEnabled() {
   config.ai.enabled = !config.ai.enabled;
   renderAiConfig();
   saveConfig();
-  addLog('INFO', 'AI 智能解析已' + (config.ai.enabled ? '开启' : '关闭'));
+  showToast('AI 智能解析已' + (config.ai.enabled ? '开启' : '关闭') + (config.ai.enabled ? '' : '，将直接投递不做AI分析'), config.ai.enabled ? 'info' : 'warning');
 }
 
 function onAiChange() {
@@ -680,10 +680,28 @@ function showExcelModal() {
       '<div class="modal">'+
         '<h3>📊 Excel 导出</h3>'+
         '<div style="max-height:50vh;overflow-y:auto;margin:12px 0">'+listHtml+'</div>'+
-        '<div class="modal-actions"><button class="btn btn-cancel" onclick="closeExcelModal()">关闭</button></div>'+
+        '<div class="modal-actions">'+
+          '<button class="btn btn-success btn-sm" onclick="syncExcelHistory()">🔄 同步历史数据</button>'+
+          '<button class="btn btn-cancel" onclick="closeExcelModal()">关闭</button>'+
+        '</div>'+
       '</div>';
     document.body.appendChild(overlay);
   }).catch(e => showToast('加载文件列表失败: ' + e, 'error'));
+}
+
+function syncExcelHistory() {
+  fetch('/api/excel/sync', { method: 'POST' })
+    .then(r => r.json())
+    .then(data => {
+      if (data.status === 'ok') {
+        showToast(data.message, 'success');
+        closeExcelModal();
+        showExcelModal();
+      } else {
+        showToast('同步失败: ' + (data.message || ''), 'error');
+      }
+    })
+    .catch(e => showToast('同步失败: ' + e.message, 'error'));
 }
 
 function closeExcelModal() {
@@ -1467,19 +1485,20 @@ function uploadCookieFile(event) {
   if (!file) return;
   const formData = new FormData();
   formData.append('file', file);
+  formData.append('account_idx', activeAccountIdx);
   fetch('/api/cookies/upload', { method:'POST', body: formData })
     .then(r=>r.json())
     .then(data => {
       if (data.status === 'ok') {
-        addLog('SUCCESS', 'Cookie 已上传: ' + file.name);
+        showToast('Cookie 已上传: ' + file.name, 'success');
         config.accounts[activeAccountIdx].cookie_file = data.filename || file.name;
         renderAccountConfig();
         saveConfig();
       } else {
-        addLog('ERROR', 'Cookie 上传失败: ' + (data.message || ''));
+        showToast('Cookie 上传失败: ' + (data.message || ''), 'error');
       }
     })
-    .catch(e => addLog('ERROR', 'Cookie 上传失败: ' + e.message));
+    .catch(e => showToast('Cookie 上传失败: ' + e.message, 'error'));
   event.target.value = '';
 }
 

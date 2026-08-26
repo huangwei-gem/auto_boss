@@ -212,3 +212,102 @@ def get_analysis_files() -> list:
             })
     files.sort(key=lambda x: x["mtime"], reverse=True)
     return files
+
+
+def export_all_from_chats_log() -> int:
+    """从 chats_log.json 导出所有历史记录到 Excel。
+
+    Returns:
+        导出的记录数
+    """
+    chats_log_file = os.path.join(DATA_DIR, "chats_log.json")
+    if not os.path.exists(chats_log_file):
+        return 0
+
+    _ensure_jd_dir()
+    with _lock:
+        filename = "JD分析记录.xlsx"
+        filepath = os.path.join(JD_DIR, filename)
+
+        # 如果文件已存在，先读取已有的时间戳+岗位名做去重
+        existing_keys = set()
+        if os.path.exists(path=filepath):
+            try:
+                wb_old = openpyxl.load_workbook(filepath, read_only=True)
+                ws_old = wb_old.active
+                for row in ws_old.iter_rows(min_row=2, values_only=True):
+                    if row[0] and row[1]:
+                        existing_keys.add(f"{row[0]}_{row[1]}")
+                wb_old.close()
+            except Exception:
+                pass
+
+        wb = _get_workbook(filepath)
+        ws = wb["JD分析记录"]
+
+        with open(chats_log_file, "r", encoding="utf-8") as f:
+            logs = json.load(f)
+
+        # 过滤掉非 dict 的旧格式记录
+        logs = [log for log in logs if isinstance(log, dict)]
+
+        count = 0
+        for log in logs:
+            key = f"{log.get('time', '')}_{log.get('job_name', '')}"
+            if key in existing_keys:
+                continue
+            existing_keys.add(key)
+
+            row_idx = ws.max_row + 1
+            ai_result = log.get("ai_result")
+            score = ai_result.get("score", "") if ai_result else ""
+            is_match = "是" if (ai_result and ai_result.get("is_match")) else "否" if ai_result else ""
+            reason = ai_result.get("reason", "") if ai_result else ""
+            strengths = ", ".join(ai_result.get("strengths", [])) if ai_result else ""
+            weaknesses = ", ".join(ai_result.get("weaknesses", [])) if ai_result else ""
+            suggested = ai_result.get("suggested_greeting", "") if ai_result else ""
+            status = "已跳过" if log.get("skipped") else "已投递"
+            ai_raw_json = json.dumps(ai_result, ensure_ascii=False) if ai_result else ""
+
+            row_data = [
+                log.get("time", ""),
+                log.get("job_name", ""),
+                log.get("company", ""),
+                log.get("salary", ""),
+                log.get("city", ""),
+                _truncate(log.get("jd_description", "")),
+                _truncate(log.get("jd_requirements", "")),
+                score,
+                is_match,
+                reason,
+                strengths,
+                weaknesses,
+                suggested,
+                round(log.get("ai_duration", 0), 2),
+                log.get("prompt_version", ""),
+                _truncate(ai_raw_json, 10000),
+                status,
+                log.get("url", ""),
+            ]
+
+            for col_idx, val in enumerate(row_data, 1):
+                cell = ws.cell(row=row_idx, column=col_idx, value=val)
+                cell.border = THIN_BORDER
+                cell.alignment = Alignment(wrap_text=True, vertical="center")
+                if status == "已投递":
+                    cell.fill = MATCH_FILL
+                elif status == "已跳过":
+                    cell.fill = SKIP_FILL
+
+            count += 1
+
+        if count > 0:
+            _auto_width(ws)
+            try:
+                wb.save(filepath)
+            except PermissionError:
+                ts = time.strftime("%Y%m%d_%H%M%S")
+                alt_filepath = os.path.join(JD_DIR, f"JD分析记录_{ts}.xlsx")
+                wb.save(alt_filepath)
+
+        return count
