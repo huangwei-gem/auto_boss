@@ -63,6 +63,9 @@ SELECTOR_SCALE = ".icon-scale"
 SELECTOR_REC_JOB_LIST = ".rec-job-list"
 SELECTOR_JOB_NAME = ".job-name"
 
+# 默认打招呼语模板（当任务和岗位都未设置时使用）
+DEFAULT_GREETING = "您好，我是双一流的本科，应聘数据分析岗位。在校系统学习数据分析相关知识，掌握Excel、基础SQL与数据整理技能，具备数据思维。做事严谨细心，学习能力强，愿意踏实积累。十分认可贵公司，希望能获得面试机会。"
+
 # 热门城市编码映射（Boss直聘使用）
 CITY_CODES = {
     "北京": "101010100", "上海": "101020100", "广州": "101280100",
@@ -154,6 +157,9 @@ class BotCore:
         # 岗位列表
         self.jobs = []
 
+        # 岗位级别自定义打招呼语 {job_url: greeting_text}
+        self._custom_greetings = {}
+
         # 投递队列锁（防止并发操作浏览器）
         self._apply_lock = threading.Lock()
 
@@ -225,6 +231,33 @@ class BotCore:
                 "skipped": self.skipped_count,
                 "total": self.total_jobs,
             })
+
+    def set_custom_greetings(self, custom_greetings: dict):
+        """设置岗位级别自定义打招呼语。
+        Args:
+            custom_greetings: {job_url: greeting_text} 字典
+        """
+        self._custom_greetings = custom_greetings or {}
+        self._log("INFO", f"已设置 {len(self._custom_greetings)} 个岗位的自定义打招呼语")
+
+    def get_job_list(self, task_idx=0):
+        """获取指定任务的岗位列表（预览用，不投递）。
+        Returns:
+            list: 岗位列表，每个岗位包含 job_name, url, company_location 等字段
+        """
+        if not self._init_browser():
+            return []
+        if not self._check_and_handle_login():
+            return []
+        task = self._tasks[task_idx] if task_idx < len(self._tasks) else self._tasks[0]
+        self._query = task.get("query", "")
+        self._city = task.get("city", "上海")
+        self._scroll_pages = task.get("scroll_pages", 5)
+        self._cookie_file = task.get("cookie_file", "zhipin_cookies.json")
+        self._log("INFO", f"🔍 预览搜索: {self._city} · {self._query}")
+        self.running = True  # _parse_job_list 需要 running=True
+        self._parse_job_list()
+        return list(self.jobs)
 
     # ── 兼容旧接口 ──
 
@@ -492,8 +525,10 @@ class BotCore:
             return False
 
     def _init_browser(self) -> bool:
-        """初始化浏览器。"""
+        """初始化浏览器。如果已经初始化则复用。"""
         try:
+            if self.dp is not None:
+                return True  # 复用已有浏览器
             co = ChromiumOptions()
             co.set_argument("--no-sandbox")
             co.set_argument("--disable-gpu")
@@ -624,6 +659,12 @@ class BotCore:
 
         self._log("INFO", f"解析出 {len(processed_jobs)} 条岗位信息")
         self.jobs = processed_jobs
+
+        # 为每个岗位附加已保存的自定义打招呼语（用于预览回显）
+        for job in self.jobs:
+            url = job.get("url", "")
+            if url and url in getattr(self, "_custom_greetings", {}):
+                job["custom_greeting"] = self._custom_greetings[url]
 
     def _get_city_id(self, city_name: str) -> str:
         """获取城市编码。优先使用 API 捕获数据，再使用硬编码映射。"""
@@ -1005,7 +1046,10 @@ class BotCore:
             self._log("INFO", "[v2] 已点击沟通按钮，等待输入框...")
 
             # ── 5. 输入消息（严格参考源文件：dp.ele(".input-area").input(message)） ──
-            greeting = self._greeting_message or "您好，我是双一流的本科，应聘数据分析岗位。在校系统学习数据分析相关知识，掌握Excel、基础SQL与数据整理技能，具备数据思维。做事严谨细心，学习能力强，愿意踏实积累。十分认可贵公司，希望能获得面试机会。"
+            # 优先级：岗位自定义打招呼语 > 任务级打招呼语 > 默认模板
+            custom_greeting = self._custom_greetings.get(job.get("url"), "")
+            greeting = custom_greeting or self._greeting_message or DEFAULT_GREETING
+            self._log("INFO", f"[v2] 打招呼语来源: {'岗位自定义' if custom_greeting else ('任务级' if self._greeting_message else '默认模板')}")
             input_area = self.dp.ele(".input-area", timeout=10)
             if not input_area:
                 self._log("WARN", f"[v2] 未找到输入框! 当前URL: {self.dp.url}")
