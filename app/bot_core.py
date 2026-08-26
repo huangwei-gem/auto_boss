@@ -765,6 +765,8 @@ class BotCore:
                 ai_result = self._analyze_job_with_ai(job)
                 if ai_result is None and self._init_ai() is not None:
                     self._log("WARN", f"🤖 AI 判定不匹配，跳过: {job.get('job_name', '')}")
+                    # 仍然抓取 JD 用于 Excel 导出
+                    self._fetch_jd_for_job(job)
                     self.skipped_count += 1
                     self._save_chat_log(job, skipped=True)
                     self._report_progress()
@@ -809,6 +811,32 @@ class BotCore:
                     break
             self._report_progress()
 
+
+    def _fetch_jd_for_job(self, job: dict):
+        """为 AI 跳过的岗位抓取 JD 信息（仅读取详情页，不投递）。"""
+        url = job.get("url", "")
+        if not url:
+            return
+        try:
+            self.dp.run_js(f"window.location.href = '{url}'")
+            self._random_delay(3, 5)
+            try:
+                job_desc_elem = self.dp.ele(".job-sec-text", timeout=3)
+                if job_desc_elem:
+                    job["jd_description"] = job_desc_elem.text
+            except Exception:
+                pass
+            try:
+                req_elem = self.dp.ele(".requirements", timeout=2)
+                if req_elem:
+                    job["jd_requirements"] = req_elem.text
+            except Exception:
+                pass
+            if not job.get("jd_requirements"):
+                job["jd_requirements"] = job.get("jd_description", "")
+            self._log("INFO", f"[JD] 已抓取: {job.get('job_name','')} ({len(job.get('jd_description',''))}字)")
+        except Exception as e:
+            self._log("WARN", f"[JD] 抓取失败: {e}")
 
     def _handle_disconnect(self) -> bool:
         """处理页面断开连接，尝试恢复。"""
