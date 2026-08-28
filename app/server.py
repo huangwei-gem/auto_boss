@@ -1,4 +1,4 @@
-import json, os, sys, threading, uuid, shutil, urllib.parse, logging, time
+import json, os, sys, threading, uuid, shutil, urllib.parse, logging, time, copy
 from typing import Optional
 from flask import Flask, render_template, request, jsonify, send_file, abort
 from flask_socketio import SocketIO, emit
@@ -29,6 +29,26 @@ _scheduler_run_id = 0
 _scheduler_running = False
 _bot = None
 _config = None
+
+def _load_stats_from_disk() -> dict:
+    """从磁盘加载所有账号的统计数据。"""
+    try:
+        stats_path = os.path.join(DATA_DIR, "stats.json")
+        if os.path.exists(stats_path):
+            with open(stats_path, "r", encoding="utf-8") as f:
+                return json.load(f)
+    except Exception:
+        pass
+    return {}
+
+def _save_stats_to_disk(stats: dict):
+    """保存统计数据到磁盘。"""
+    try:
+        stats_path = os.path.join(DATA_DIR, "stats.json")
+        with open(stats_path, "w", encoding="utf-8") as f:
+            json.dump(stats, f, ensure_ascii=False, indent=2)
+    except Exception:
+        pass
 
 def _ensure_config():
     """确保 _config 已初始化。"""
@@ -147,6 +167,9 @@ class TaskScheduler:
         self.sid = sid
         self._stop = threading.Event()
         self._current_runner = None
+        self.total_count = len(tasks)  # 总任务数（不变）
+        self.completed_count = 0  # 已完成数
+        self._account_stats = {}  # 每个账号的统计（持久化用）
 
     def log(self, msg: str):
         try:
@@ -167,6 +190,26 @@ class TaskScheduler:
         self._stop.set()
         if self._current_runner:
             self._current_runner.stop()
+
+    def get_progress(self) -> dict:
+        """获取当前进度（用于刷新后恢复）。"""
+        bot_core = None
+        runner = self._current_runner
+        if runner:
+            bot_core = getattr(runner, 'bot', None)
+        if bot_core and hasattr(bot_core, 'applied_count'):
+            return {
+                "total": self.total_count,
+                "applied": bot_core.applied_count,
+                "skipped": bot_core.skipped_count,
+                "completed": self.completed_count,
+            }
+        return {
+            "total": self.total_count,
+            "applied": 0,
+            "skipped": 0,
+            "completed": self.completed_count,
+        }
 
     def run(self, target_sid):
         self.log(f"[SYSTEM] 调度器启动，共 {len(self.tasks)} 个任务")
@@ -203,6 +246,18 @@ class TaskScheduler:
 
             completed_count += len(acc_tasks)
             self.log(f"[SCHEDULER] ✓ 账号 {acc_name} 已完成（{len(acc_tasks)} 个岗位）")
+
+            # 记录此账号的统计（用于持久化）
+            bot_core = getattr(runner, 'bot', None)
+            if bot_core and hasattr(bot_core, 'applied_count'):
+                self._account_stats[acc_name] = {
+                    "total": bot_core.total_jobs,
+                    "applied": bot_core.applied_count,
+                    "skipped": bot_core.skipped_count,
+                    "query": bot_core._query,
+                    "city": bot_core._city,
+                    "updated_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+                }
 
             socketio.emit("scheduler_status", {
                 "running": True,
@@ -267,15 +322,15 @@ def api_add_account():
     try:
         data = request.get_json(silent=True) or {}
         idx = len(_config["accounts"])
-        # 每个新账号使用独立的 cookie 文件
-        cookie_file = f"zhipin_cookies_acc{idx + 1}.json"
+        # 新账号默认 cookie 为空，等用户上传时再分配
         _config["accounts"].append({
             "name": f"账号{idx + 1}",
             "enabled": True,
-            "cookie_file": cookie_file,
+            "cookie_file": "",
             "image_files": [],
             "message_interval_min": 3,
             "message_interval_max": 8,
+            "resume": {},
             "jobs": [{
                 "enabled": True,
                 "city": "上海",
@@ -474,6 +529,43 @@ def api_upload_greeting():
 
 # ── Scheduler Status ──
 
+@app.route("/api/stats", methods=["GET"])
+def api_stats():
+    """获取所有账号的持久化统计数据。"""
+    stats = _load_stats_from_disk()
+    return jsonify({"status": "ok", "stats": stats})
+
+
+@app.route("/api/fetched_jobs", methods=["GET"])
+def api_fetched_jobs():
+    """获取所有已抓取的岗位链接（跨会话去重用）。"""
+    try:
+        path = os.path.join(DATA_DIR, "fetched_jobs.json")
+        if os.path.exists(path):
+            with open(path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            return jsonify({"status": "ok", "jobs": data, "count": len(data)})
+        return jsonify({"status": "ok", "jobs": [], "count": 0})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route("/api/fetched_jobs/clear", methods=["POST"])
+def api_fetched_jobs_clear():
+    """清除已抓取的岗位链接记录。"""
+    try:
+        path = os.path.join(DATA_DIR, "fetched_jobs.json")
+        if os.path.exists(path):
+            os.remove(path)
+        return jsonify({"status": "ok"})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+def api_stats_clear():
+    """清除所有统计数据。"""
+    _save_stats_to_disk({})
+    return jsonify({"status": "ok"})
+
+
 @app.route("/api/scheduler/reset", methods=["POST"])
 def api_scheduler_reset():
     global _scheduler_running, _scheduler_thread, _bot
@@ -605,16 +697,23 @@ def api_upload_cookies():
     try:
         content_data = f.read().decode("utf-8")
         json.loads(content_data)  # 验证 JSON 格式
-        # 获取当前账号指定的 cookie 文件名
+        # 获取当前账号
         account_idx = request.form.get("account_idx", type=int)
         if account_idx is not None and 0 <= account_idx < len(_config.get("accounts", [])):
-            cookie_file = _config["accounts"][account_idx].get("cookie_file", f"zhipin_cookies_acc{account_idx + 1}.json")
+            acc = _config["accounts"][account_idx]
+            cookie_file = acc.get("cookie_file", "")
+            # 如果账号没有指定 cookie 文件，生成一个
+            if not cookie_file:
+                cookie_file = f"zhipin_cookies_acc{account_idx + 1}.json"
+                acc["cookie_file"] = cookie_file
         else:
-            safe_name = os.path.basename(f.filename) if f.filename else "zhipin_cookies.json"
-            cookie_file = safe_name
+            cookie_file = os.path.basename(f.filename) if f.filename else "zhipin_cookies.json"
         dst = os.path.join(DATA_DIR, cookie_file)
         with open(dst, "w", encoding="utf-8") as out:
             out.write(content_data)
+        # 保存配置（cookie_file 可能已更新）
+        if account_idx is not None:
+            save_config(_config)
         return jsonify({"status": "ok", "filename": cookie_file})
     except json.JSONDecodeError:
         return jsonify({"status": "error", "message": "无效的 JSON 格式"}), 400
@@ -647,11 +746,42 @@ def api_delete_cookie():
 
 # ── SocketIO ──
 
+@socketio.on("connect")
+def on_connect():
+    """新客户端连接时，发送磁盘上持久化的统计数据。"""
+    global _bot, _scheduler_running
+    # 从磁盘加载所有账号的统计
+    stats = _load_stats_from_disk()
+    logger.info(f"[CONNECT] 加载到 stats: {list(stats.keys()) if stats else '空'}")
+    if stats:
+        emit("stats_update", stats)
+        logger.info("[CONNECT] 已发送 stats_update 事件")
+
+    # 如果有正在运行的任务，获取实时进度
+    if _scheduler_running and _bot and hasattr(_bot, 'get_progress'):
+        progress = _bot.get_progress()
+        emit("bot_progress", {
+            "applied": progress["applied"],
+            "skipped": progress["skipped"],
+            "total": progress["total"],
+        })
+        emit("scheduler_status", {"running": True})
+
 @socketio.on("start_all")
 def on_start_all(data=None):
     global _scheduler_thread, _scheduler_stop, _bot, _scheduler_running, _config, _scheduler_run_id
 
     sid = request.sid
+
+    # 获取要运行的账号索引（None = 所有账号）
+    account_idx = None
+    if data and isinstance(data, dict):
+        account_idx = data.get("account_idx")
+        if account_idx is not None:
+            try:
+                account_idx = int(account_idx)
+            except (ValueError, TypeError):
+                account_idx = None
 
     # Stop old scheduler if running
     if _scheduler_running:
@@ -672,7 +802,21 @@ def on_start_all(data=None):
         logger.info("已停止旧调度器线程，重新启动")
 
     _config = load_config()
-    tasks = flatten_jobs_for_run(_config)
+
+    # 如果指定了账号，只运行该账号的任务
+    if account_idx is not None and 0 <= account_idx < len(_config.get("accounts", [])):
+        acc = _config["accounts"][account_idx]
+        if not acc.get("enabled", True):
+            emit("bot_log", {"message": f"[SYSTEM] 账号「{acc.get('name', account_idx)}」已禁用，无法启动"})
+            return
+        # 临时修改配置：只保留指定账号
+        temp_config = copy.deepcopy(_config)
+        temp_config["accounts"] = [acc]
+        tasks = flatten_jobs_for_run(temp_config)
+        emit("bot_log", {"message": f"[SYSTEM] 仅运行账号「{acc.get('name', account_idx)}」的任务"})
+    else:
+        tasks = flatten_jobs_for_run(_config)
+
     if not tasks:
         emit("bot_log", {"message": "[SYSTEM] 没有启用的任务（请检查账号和岗位的 enabled 状态）"})
         return
@@ -682,7 +826,7 @@ def on_start_all(data=None):
 
     emit("bot_log", {"message": f"[SYSTEM] 调度器启动，共 {len(tasks)} 个任务"})
     emit("bot_status", {"running": True})
-    emit("scheduler_status", {"running": True, "total": len(tasks), "completed": 0, "current": None})
+    emit("scheduler_status", {"running": True, "total": tasks, "completed": 0, "current": None})
 
     _scheduler_stop.clear()
     _scheduler_running = True
@@ -706,6 +850,28 @@ def on_start_all(data=None):
             if run_id == _scheduler_run_id:
                 _scheduler_running = False
                 _scheduler_thread = None
+                # 保存最终统计到磁盘
+                if hasattr(scheduler, 'get_progress'):
+                    progress = scheduler.get_progress()
+                    stats_path = os.path.join(DATA_DIR, "stats.json")
+                    try:
+                        existing = {}
+                        if os.path.exists(stats_path):
+                            with open(stats_path, "r", encoding="utf-8") as f:
+                                existing = json.load(f)
+                        # 合并：把当前任务的最终进度写进去
+                        for acc_name, runner_data in getattr(scheduler, '_account_stats', {}).items():
+                            existing[acc_name] = runner_data
+                        existing['_last_run'] = {
+                            "total": progress.get("total", 0),
+                            "applied": progress.get("applied", 0),
+                            "skipped": progress.get("skipped", 0),
+                            "completed": progress.get("completed", 0),
+                            "ended_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+                        }
+                        _save_stats_to_disk(existing)
+                    except Exception:
+                        pass
                 try:
                     socketio.emit("bot_status", {"running": False}, to=sid)
                     socketio.emit("scheduler_status", {"running": False}, to=sid)

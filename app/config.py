@@ -262,6 +262,6 @@ def flatten_jobs_for_run(cfg: dict) -> list[dict]:
                 "rate_limit": cfg.get("rate_limit", {}),
                 "retry": cfg.get("retry", {}),
                 "ai": cfg.get("ai", {}),
-                "resume": cfg.get("resume", {}),
+                "resume": acc.get("resume", {}),
             })
     return tasks

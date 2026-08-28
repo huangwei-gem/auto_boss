@@ -151,11 +151,16 @@ class BotCore:
         self._image_files = []
         self._min_interval = 3
         self._max_interval = 8
-        self._cookie_file = "zhipin_cookies.json"
+        self._cookie_file = ""
         self._login_required_cb = None
+        self.account_name = ""
 
         # 岗位列表
         self.jobs = []
+
+        # 保活机制：防止 Chrome 冻结/丢弃页面
+        self._last_keepalive = 0
+        self._keepalive_interval = 60  # 每 60 秒保活一次
 
         # 投递队列锁（防止并发操作浏览器）
         self._apply_lock = threading.Lock()
@@ -196,7 +201,9 @@ class BotCore:
         self._ai_model = ai_cfg.get("model", "agnes-2.5-flash")
         self._ai_threshold = ai_cfg.get("match_threshold", 70)
         self._ai_cfg = ai_cfg
-        self._resume_cfg = self.config.get("resume", {})
+        # 简历：优先从账号级别读取，兼容全局resume
+        self._resume_cfg = self.config.get("resume", {}) or {}
+        self._custom_prompts = {}
         self._ai_analyzer = None
 
         # 从 config 中读取 _login_required_callback（由 BotRunner 传入）
@@ -209,7 +216,7 @@ class BotCore:
         self._image_files = self.config.get("image_files", [])
         self._min_interval = self.config.get("message_interval_min", 3)
         self._max_interval = self.config.get("message_interval_max", 8)
-        self._cookie_file = self.config.get("cookie_file", "zhipin_cookies.json")
+        self._cookie_file = self.config.get("cookie_file", "") or ""
 
     def _log(self, level: str, msg: str):
         """统一日志输出。"""
@@ -228,6 +235,8 @@ class BotCore:
                 "skipped": self.skipped_count,
                 "total": self.total_jobs,
             })
+        # 每次进度变化时持久化到磁盘
+        self._save_stats()
 
     # ── 兼容旧接口 ──
 
@@ -319,7 +328,8 @@ class BotCore:
             self._image_files = task.get("image_files", [])
             self._min_interval = task.get("message_interval_min", 3)
             self._max_interval = task.get("message_interval_max", 8)
-            self._cookie_file = task.get("cookie_file", "zhipin_cookies.json")
+            self._cookie_file = task.get("cookie_file", "") or ""
+            self.account_name = task.get("account_name", "")
             # Issue 6 fix: 从 task 中读取 _login_required_callback
             self._login_required_cb = task.get("_login_required_callback", self._login_required_cb)
 
@@ -466,6 +476,51 @@ class BotCore:
         except Exception:
             pass
 
+    def _save_fetched_jobs(self, jobs: list):
+        """将解析到的所有岗位链接保存到磁盘（跨会话去重用）。"""
+        try:
+            data_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
+            path = os.path.join(data_dir, "fetched_jobs.json")
+            existing = []
+            if os.path.exists(path):
+                with open(path, "r", encoding="utf-8") as f:
+                    existing = json.load(f)
+            existing_urls = {j.get("url") for j in existing if j.get("url")}
+            new_count = 0
+            for job in jobs:
+                url = job.get("url", "")
+                if url and url not in existing_urls:
+                    existing.append({
+                        "url": url,
+                        "job_name": job.get("job_name", ""),
+                        "salary": job.get("salary", ""),
+                        "company_location": job.get("company_location", ""),
+                        "query": job.get("query", ""),
+                        "city": self._city,
+                        "account": self.account_name,
+                        "fetched_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+                    })
+                    existing_urls.add(url)
+                    new_count += 1
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump(existing, f, ensure_ascii=False, indent=2)
+            if new_count > 0:
+                self._log("INFO", f"新增 {new_count} 个岗位链接到本地记录（共 {len(existing)} 个）")
+        except Exception:
+            pass
+        """从文件加载之前捕获的城市数据。"""
+        try:
+            import json
+            city_file = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "city_dict.json")
+            if os.path.exists(city_file):
+                with open(city_file, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                    if isinstance(data, dict):
+                        self._city_dict.update(data)
+                        self._log("INFO", f"已加载 {len(self._city_dict)} 个城市数据(文件)")
+        except Exception:
+            pass
+
 
     def _check_login_expired(self) -> bool:
         """验证登录状态，检查当前页面是否被重定向到登录页。"""
@@ -489,7 +544,19 @@ class BotCore:
                 self._log("SUCCESS", "登录成功")
             return True
         except Exception as e:
-            self._log("WARN", "登录检查异常: " + str(e))
+            err_msg = str(e)
+            if "连接已断开" in err_msg or "PageDisconnected" in err_msg:
+                self._log("WARN", "页面连接断开，尝试重新导航到搜索页...")
+                try:
+                    search_url = self._build_search_url(self._query, self._city)
+                    self.dp.get(search_url)
+                    self._random_delay(3, 5)
+                    self._log("INFO", "已重新导航到搜索页，继续处理")
+                    return True
+                except Exception as nav_e:
+                    self._log("ERROR", f"重新导航失败: {nav_e}")
+                    return False
+            self._log("WARN", "登录检查异常: " + err_msg)
             import traceback
             self._log("WARN", traceback.format_exc())
             return False
@@ -629,6 +696,8 @@ class BotCore:
 
         self._log("INFO", f"解析出 {len(processed_jobs)} 条岗位信息")
         self.jobs = processed_jobs
+        # 持久化所有拿到的岗位链接（用于跨会话去重和分析）
+        self._save_fetched_jobs(processed_jobs)
 
     def _get_city_id(self, city_name: str) -> str:
         """获取城市编码。优先使用 API 捕获数据，再使用硬编码映射。"""
@@ -645,7 +714,6 @@ class BotCore:
 
     def _resolve_images(self) -> list:
         """解析作品图片路径。只使用配置的 image_files，不自动扫描 dashboard 目录。"""
-        import glob
         # app/static/dashboard 是作品图目录
         static_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
         dashboard_dir = os.path.join(static_dir, "dashboard")
@@ -653,7 +721,7 @@ class BotCore:
 
         resolved = []
 
-        # 只使用配置的 image_files
+        # 只使用配置的 image_files（空列表 = 不发图片）
         if self._image_files:
             for img in self._image_files:
                 if isinstance(img, str):
@@ -668,18 +736,11 @@ class BotCore:
                     else:
                         self._log("WARN", f"配置图片不存在: {full_path}")
 
-        # 兜底：扫描 dashboard 目录
-        if not resolved:
-            for ext in ["*.png", "*.jpg", "*.jpeg", "*.gif", "*.webp"]:
-                for f in glob.glob(os.path.join(dashboard_dir, ext)):
-                    resolved.append(f)
-
         final_resolved = list(dict.fromkeys(resolved))
         if final_resolved:
             self._log("INFO", f"共准备 {len(final_resolved)} 张作品图片")
         else:
-            self._log("WARN", "没有作品图片")
-        return final_resolved
+            self._log("INFO", "该岗位未配置作品图片，跳过图片上传")
         return final_resolved
 
 
@@ -710,6 +771,7 @@ class BotCore:
                     model=self._ai_model,
                     match_threshold=self._ai_threshold,
                     log_callback=lambda msg: self._log("INFO", msg),
+                    prompts=self._custom_prompts,
                 )
             self._ai_analyzer.set_resume(self._resume_cfg)
             self._log("INFO", f"🤖 AI 智能解析已启用（模型: {self._ai_model}，阈值: {self._ai_threshold}）")
@@ -757,6 +819,8 @@ class BotCore:
         for idx, job in enumerate(self.jobs):
             if not self.running:
                 break
+            # 保活：防止 Chrome 冻结页面
+            self._keep_alive()
             if self._rate_limit_enabled and self.applied_count >= self._max_per_hour:
                 self._log("WARN", f"已达到每小时上限 {self._max_per_hour}，暂停 30 分钟")
                 if not self._wait_or_stop(1800):
@@ -997,8 +1061,51 @@ class BotCore:
 
             btn_text = chat_btn.text
             if "继续沟通" in btn_text:
-                self._log("INFO", "该岗位之前已投递过（继续沟通），跳过")
-                return False
+                # 继续沟通：点击后直接进入聊天窗口，发送打招呼消息
+                self._log("INFO", "继续沟通：点击进入聊天窗口")
+                try:
+                    chat_btn.click()
+                    self._random_delay(2, 3)
+                    # 等待聊天窗口加载，找到输入框
+                    input_area = self.dp.ele(".input-area", timeout=10)
+                    if not input_area:
+                        self._log("WARN", "[v2] 继续沟通后未找到输入框")
+                        # 导航回搜索列表页
+                        try:
+                            search_url = self._build_search_url(self._query, self._city)
+                            self.dp.run_js(f"window.location.href = '{search_url}'")
+                            self._random_delay(2, 3)
+                        except Exception:
+                            pass
+                        return False
+                    # 输入打招呼消息
+                    greeting = self._greeting_message or DEFAULT_GREETING
+                    self._log("INFO", f"[v2] 打招呼语来源: {'AI定制' if self._greeting_message else '默认模板'}")
+                    input_area.input(greeting)
+                    self._log("INFO", "[v2] 消息已输入")
+                    # 点击发送
+                    self.dp.ele(".send-message").click()
+                    self._random_delay(1, 2)
+                    self._log("SUCCESS", f"✅ 已投递（继续沟通）: {job.get('job_name', '')}")
+                    # 关闭聊天窗口
+                    try:
+                        close_btn = self.dp.ele(".icon-close", timeout=2)
+                        if close_btn:
+                            close_btn.click()
+                            self._random_delay(1, 2)
+                    except Exception:
+                        pass
+                    # 导航回搜索列表页
+                    try:
+                        search_url = self._build_search_url(self._query, self._city)
+                        self.dp.run_js(f"window.location.href = '{search_url}'")
+                        self._random_delay(2, 3)
+                    except Exception:
+                        pass
+                    return True
+                except Exception as e:
+                    self._log("WARN", f"继续沟通操作异常: {e}")
+                    return False
 
             # ── 3. 获取 JD 信息（参考源文件） ──
             job_description = ""
@@ -1046,27 +1153,98 @@ class BotCore:
             chat_btn.click()
             self._log("INFO", "[v2] 已点击沟通按钮，等待输入框...")
 
-            # ── 5. 输入消息（严格参考源文件：dp.ele(".input-area").input(message)） ──
-            # 优先级：AI 定制化打招呼语 > 任务级模板 > 默认模板
+            # ── 5. 判断是哪种流程 ──
             greeting = self._greeting_message or DEFAULT_GREETING
             self._log("INFO", f"[v2] 打招呼语来源: {'AI定制' if self._greeting_message else '默认模板'}")
             input_area = self.dp.ele(".input-area", timeout=10)
+
             if not input_area:
-                self._log("WARN", f"[v2] 未找到输入框! 当前URL: {self.dp.url}")
-                # 打印页面上所有input/textarea元素帮助调试
+                # ═══════════════════════════════════════════════════════════════
+                # 流程B：弹窗流程 — Boss自动发了默认消息，弹出"留在此页/继续沟通"确认框
+                # ═══════════════════════════════════════════════════════════════
+                self._log("WARN", f"[v2] 未找到输入框，进入弹窗流程! URL: {self.dp.url}")
                 try:
-                    inputs = self.dp.eles("tag:input") + self.dp.eles("tag:textarea") + self.dp.eles("[contenteditable]")
-                    self._log("INFO", f"[v2] 页面上的输入元素: {len(inputs)} 个")
-                    for i, inp in enumerate(inputs[:5]):
-                        self._log("INFO", f"  输入{i}: tag={inp.tag} class={inp.attr('class')} type={inp.attr('type')}")
-                except Exception as dbg_e:
-                    self._log("WARN", f"[v2] 获取输入元素失败: {dbg_e}")
-                return False
+                    # 先检测是否有弹窗（"留在此页"是弹窗特有的按钮）
+                    stay_btn = self.dp.ele("text:留在此页", timeout=3)
+                    if stay_btn:
+                        self._log("INFO", "[v2] 检测到弹窗，点击「继续沟通」进入聊天窗口")
+                        # 有弹窗，点击弹窗里的「继续沟通」
+                        # 弹窗里"继续沟通"按钮可能用 class 标识
+                        continue_btn = self.dp.ele(".dialog-continue", timeout=2)
+                        if not continue_btn:
+                            # 备选：在弹窗容器内找"继续沟通"
+                            dialogs = self.dp.eles(".dialog") + self.dp.eles(".modal") + self.dp.eles(".popup")
+                            for dlg in dialogs:
+                                btn = dlg.ele("text:继续沟通", timeout=1)
+                                if btn:
+                                    continue_btn = btn
+                                    break
+                        if not continue_btn:
+                            # 最后备选：直接文本匹配
+                            continue_btn = self.dp.ele("text:继续沟通", timeout=2)
+                        if continue_btn:
+                            continue_btn.click()
+                            self._random_delay(2, 4)
+                            self._log("INFO", "[v2] 已点击「继续沟通」")
+                        else:
+                            # 找不到"继续沟通"，点"留在此页"关闭弹窗
+                            stay_btn.click()
+                            self._random_delay(1, 2)
+                            self._log("WARN", "[v2] 弹窗中未找到「继续沟通」按钮，关闭弹窗")
+                            return False
+                    else:
+                        # 没有弹窗，可能页面状态已变化
+                        self._log("WARN", "[v2] 未检测到弹窗，尝试直接查找聊天输入框")
+                except Exception as e:
+                    self._log("WARN", f"[v2] 弹窗处理异常: {e}")
+
+                # 进入完整聊天窗口后查找输入框
+                input_area2 = self.dp.ele("#chat-input", timeout=10)
+                if input_area2:
+                    input_area2.input(greeting)
+                    self._random_delay(1, 2)
+                    self._log("INFO", "[v2] 聊天窗口已输入自定义打招呼语")
+                    # 发送按钮和输入框是兄弟节点，在 .chat-op 里，直接查找（不需要滚动）
+                    # 三个 class 都在同一个 button 上，用无空格 CSS 且语法
+                    send_btn = self.dp.ele(".btn-v2.btn-sure-v2.btn-send", timeout=5)
+                    if not send_btn:
+                        send_btn = self.dp.ele("text:发送", timeout=3)
+                    if not send_btn:
+                        send_btn = self.dp.ele("button[type=send]", timeout=3)
+                    if send_btn:
+                        send_btn.click()
+                        self._random_delay(1, 2)
+                        self._log("INFO", "[v2] 已点击发送按钮，自定义消息已发送")
+                    else:
+                        self._log("WARN", "[v2] 聊天窗口未找到发送按钮")
+                else:
+                    self._log("WARN", "[v2] 继续沟通后仍未找到聊天窗口输入框")
+
+                # 关闭聊天窗口
+                try:
+                    close_btn = self.dp.ele(".icon-close", timeout=2)
+                    if close_btn:
+                        close_btn.click()
+                        self._random_delay(1, 2)
+                except Exception:
+                    pass
+                # 导航回搜索列表页
+                try:
+                    search_url = self._build_search_url(self._query, self._city)
+                    self.dp.run_js(f"window.location.href = '{search_url}'")
+                    self._random_delay(2, 3)
+                except Exception:
+                    pass
+                return True
+
+            # ═══════════════════════════════════════════════════════════════
+            # 流程A：传统流程 — 出现输入框，输入消息，点发送，发图片
+            # ═══════════════════════════════════════════════════════════════
             self._log("INFO", "[v2] 找到输入框，输入消息...")
             input_area.input(greeting)
             self._log("INFO", "[v2] 消息已输入")
 
-            # ── 6. 点击发送（严格参考源文件：dp.ele(".send-message").click()） ──
+            # ── 6. 点击发送 ──
             self.dp.ele(".send-message").click()
             self._random_delay(1, 2)
 
@@ -1078,10 +1256,31 @@ class BotCore:
                 self._mark_chatted(job)
                 return True
 
+            # ── 6.5 发送消息后可能弹出"消息发送成功"确认框 ──
+            # 流程A中：点"留在此页"留在当前页面，然后继续发图片
+            try:
+                continue_btn = self.dp.ele("text:继续沟通", timeout=3)
+                if continue_btn:
+                    self._log("INFO", "[v2] 检测到消息发送成功弹窗，点击「留在此页」")
+                    stay_btn = self.dp.ele("text:留在此页", timeout=2)
+                    if stay_btn:
+                        stay_btn.click()
+                        self._random_delay(1, 1)
+                        self._log("INFO", "[v2] 点击「留在此页」，继续发图片")
+                    else:
+                        # 没有"留在此页"按钮，尝试关闭弹窗
+                        close_btn = self.dp.ele(".icon-close", timeout=1) or self.dp.ele(".close", timeout=1)
+                        if close_btn:
+                            close_btn.click()
+                            self._random_delay(1, 1)
+                            self._log("INFO", "[v2] 关闭弹窗")
+            except Exception:
+                pass
+
             # ── 7. 发送图片（在发送消息之后） ──
             self._send_images_after_message()
 
-            # ── 清理状态 ──
+            # ── 8. 清理状态 ──
             try:
                 close_btn = self.dp.ele(".icon-close", timeout=2)
                 if close_btn:
@@ -1234,6 +1433,22 @@ class BotCore:
             return
         time.sleep(random.uniform(min_sec, max_sec))
 
+    def _keep_alive(self):
+        """保活：定期与页面交互，防止 Chrome 冻结/丢弃标签页。"""
+        now = time.time()
+        if now - self._last_keepalive < self._keepalive_interval:
+            return
+        self._last_keepalive = now
+        if not self.dp:
+            return
+        try:
+            # 轻微滚动再滚回，制造"用户活动"信号
+            self.dp.scroll.up(1)
+            time.sleep(0.1)
+            self.dp.scroll.down(1)
+        except Exception:
+            pass
+
     def _wait_or_stop(self, seconds: float) -> bool:
         interval = 5
         for _ in range(int(seconds / interval)):
@@ -1249,16 +1464,15 @@ class BotCore:
         try:
             import json as _json
             data_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
-            cookie_name = self._cookie_file if self._cookie_file else "zhipin_cookies.json"
+            cookie_name = self._cookie_file if self._cookie_file else ""
+            if not cookie_name:
+                self._log("WARN", "当前账号未设置 Cookie 文件，跳过加载")
+                return False
             paths_to_try = []
             if not os.path.isabs(cookie_name):
                 paths_to_try.append(os.path.join(data_dir, cookie_name))
             else:
                 paths_to_try.append(cookie_name)
-            if cookie_name != "zhipin_cookies.json":
-                paths_to_try.append(os.path.join(data_dir, "zhipin_cookies.json"))
-            else:
-                paths_to_try.append(os.path.join(data_dir, "zhipin_cookies.json"))
             loaded = False
             for p in paths_to_try:
                 if os.path.exists(p):
@@ -1269,7 +1483,7 @@ class BotCore:
                     loaded = True
                     break
             if not loaded:
-                self._log("WARN", "未找到 Cookie 文件")
+                self._log("WARN", f"未找到 Cookie 文件: {cookie_name}")
             return loaded
         except Exception as e:
             self._log("WARN", f"Cookie 加载失败: {e}")
@@ -1280,23 +1494,24 @@ class BotCore:
         try:
             import json as _json
             data_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
-            cookie_name = self._cookie_file if self._cookie_file else "zhipin_cookies.json"
+            cookie_name = self._cookie_file if self._cookie_file else ""
+            if not cookie_name:
+                self._log("WARN", "当前账号未设置 Cookie 文件，跳过保存")
+                return
             dst = os.path.join(data_dir, cookie_name)
             cookies = self.dp.cookies()
             with open(dst, "w", encoding="utf-8") as f:
                 _json.dump(cookies, f, ensure_ascii=False, indent=2)
             self._log("INFO", f"已保存 Cookie: {dst}")
-            fallback = os.path.join(data_dir, "zhipin_cookies.json")
-            if dst != fallback:
-                import shutil
-                shutil.copy2(dst, fallback)
         except Exception as e:
             self._log("WARN", f"Cookie 保存失败: {e}")
 
     def _clear_cookies(self):
         if self._clear_cookies_on_failure:
             try:
-                cookie_name = self._cookie_file if self._cookie_file else "zhipin_cookies.json"
+                cookie_name = self._cookie_file if self._cookie_file else ""
+                if not cookie_name:
+                    return
                 if not os.path.isabs(cookie_name):
                     dst = os.path.join(DATA_DIR, cookie_name)
                 else:
@@ -1309,9 +1524,42 @@ class BotCore:
 
     # ── 去重管理 ──
 
-    def _chatted_db_path(self) -> str:
+    def _stats_db_path(self) -> str:
         data_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
-        return os.path.join(data_dir, "chatted_jobs.json")
+        return os.path.join(data_dir, "stats.json")
+
+    def _load_stats(self) -> dict:
+        """加载每个账号的统计数据。"""
+        try:
+            path = self._stats_db_path()
+            if os.path.exists(path):
+                with open(path, "r", encoding="utf-8") as f:
+                    return json.load(f)
+        except Exception:
+            pass
+        return {}
+
+    def _save_stats(self):
+        """保存当前账号的统计数据到磁盘。"""
+        try:
+            path = self._stats_db_path()
+            stats = {}
+            if os.path.exists(path):
+                with open(path, "r", encoding="utf-8") as f:
+                    stats = json.load(f)
+            account = getattr(self, "account_name", None) or "默认"
+            stats[account] = {
+                "total": self.total_jobs,
+                "applied": self.applied_count,
+                "skipped": self.skipped_count,
+                "query": self._query,
+                "city": self._city,
+                "updated_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+            }
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump(stats, f, ensure_ascii=False, indent=2)
+        except Exception:
+            pass
 
     def _load_chatted(self) -> set:
         try:

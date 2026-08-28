@@ -759,21 +759,24 @@ function savePromptModal() {
 }
 
 function showResumeModal() {
-  if (!config.resume) config.resume = {};
-  config.resume = Object.assign({school:'',major:'',degree:'',skills:[],experience:'',target_position:'',self_intro:''}, config.resume);
-  const overlay = document.createElement('div');
+  var acc = config.accounts[activeAccountIdx];
+  if (!acc) return;
+  if (!acc.resume) acc.resume = {};
+  acc.resume = Object.assign({school:'',major:'',degree:'',skills:[],experience:'',target_position:'',self_intro:''}, acc.resume);
+  var r = acc.resume;
+  var overlay = document.createElement('div');
   overlay.className = 'modal-overlay';
   overlay.id = 'resumeModal';
   overlay.innerHTML =
     '<div class="modal">'+
-      '<h3>📄 编辑简历（用于 AI 匹配分析）</h3>'+
-      '<div class="modal-field"><label>学校</label><input id="resumeSchool" value="'+escHtml(config.resume.school||'')+'" placeholder="例如: 某某大学"></div>'+
-      '<div class="modal-field"><label>专业</label><input id="resumeMajor" value="'+escHtml(config.resume.major||'')+'" placeholder="例如: 统计学"></div>'+
-      '<div class="modal-field"><label>学历</label><input id="resumeDegree" value="'+escHtml(config.resume.degree||'')+'" placeholder="例如: 本科"></div>'+
-      '<div class="modal-field"><label>技能（逗号分隔）</label><input id="resumeSkills" value="'+escHtml((config.resume.skills||[]).join(', '))+'" placeholder="例如: Excel, SQL, Python"></div>'+
-      '<div class="modal-field"><label>工作经验</label><textarea id="resumeExperience" placeholder="简要描述工作/项目经验" style="min-height:60px">'+escHtml(config.resume.experience||'')+'</textarea></div>'+
-      '<div class="modal-field"><label>求职意向</label><input id="resumeTarget" value="'+escHtml(config.resume.target_position||'')+'" placeholder="例如: 数据分析师"></div>'+
-      '<div class="modal-field"><label>自我介绍</label><textarea id="resumeIntro" placeholder="自我介绍（可用于打招呼消息）" style="min-height:60px">'+escHtml(config.resume.self_intro||'')+'</textarea></div>'+
+      '<h3>📄 编辑简历（' + escHtml(acc.name || '当前账号') + '）</h3>'+
+      '<div class="modal-field"><label>学校</label><input id="resumeSchool" value="'+escHtml(r.school||'')+'" placeholder="例如: 某某大学"></div>'+
+      '<div class="modal-field"><label>专业</label><input id="resumeMajor" value="'+escHtml(r.major||'')+'" placeholder="例如: 统计学"></div>'+
+      '<div class="modal-field"><label>学历</label><input id="resumeDegree" value="'+escHtml(r.degree||'')+'" placeholder="例如: 本科"></div>'+
+      '<div class="modal-field"><label>技能（逗号分隔）</label><input id="resumeSkills" value="'+escHtml((r.skills||[]).join(', '))+'" placeholder="例如: Excel, SQL, Python"></div>'+
+      '<div class="modal-field"><label>工作经验</label><textarea id="resumeExperience" placeholder="简要描述工作/项目经验" style="min-height:60px">'+escHtml(r.experience||'')+'</textarea></div>'+
+      '<div class="modal-field"><label>求职意向</label><input id="resumeTarget" value="'+escHtml(r.target_position||'')+'" placeholder="例如: 数据分析师"></div>'+
+      '<div class="modal-field"><label>自我介绍</label><textarea id="resumeIntro" placeholder="自我介绍（可用于打招呼消息）" style="min-height:60px">'+escHtml(r.self_intro||'')+'</textarea></div>'+
       '<div class="modal-actions">'+
         '<button class="btn btn-primary" onclick="saveResumeModal()">保存</button>'+
         '<button class="btn btn-cancel" onclick="closeResumeModal()">取消</button>'+
@@ -783,25 +786,27 @@ function showResumeModal() {
 }
 
 function closeResumeModal() {
-  const m = document.getElementById('resumeModal');
+  var m = document.getElementById('resumeModal');
   if (m) m.remove();
 }
 
 function saveResumeModal() {
-  if (!config.resume) config.resume = {};
-  config.resume.school = document.getElementById('resumeSchool').value.trim();
-  config.resume.major = document.getElementById('resumeMajor').value.trim();
-  config.resume.degree = document.getElementById('resumeDegree').value.trim();
-  config.resume.skills = document.getElementById('resumeSkills').value.split(/[,，]/).map(s=>s.trim()).filter(Boolean);
-  config.resume.experience = document.getElementById('resumeExperience').value.trim();
-  config.resume.target_position = document.getElementById('resumeTarget').value.trim();
-  config.resume.self_intro = document.getElementById('resumeIntro').value.trim();
+  var acc = config.accounts[activeAccountIdx];
+  if (!acc) return;
+  if (!acc.resume) acc.resume = {};
+  acc.resume.school = document.getElementById('resumeSchool').value.trim();
+  acc.resume.major = document.getElementById('resumeMajor').value.trim();
+  acc.resume.degree = document.getElementById('resumeDegree').value.trim();
+  acc.resume.skills = document.getElementById('resumeSkills').value.split(/[,，]/).map(function(s){return s.trim()}).filter(Boolean);
+  acc.resume.experience = document.getElementById('resumeExperience').value.trim();
+  acc.resume.target_position = document.getElementById('resumeTarget').value.trim();
+  acc.resume.self_intro = document.getElementById('resumeIntro').value.trim();
   closeResumeModal();
-  fetch('/api/resume', {method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify(config.resume)})
-    .then(r=>r.json()).then(function(data) {
-      if (data.status === 'ok') addLog('SUCCESS', '简历已保存');
-      else addLog('ERROR', '保存简历失败: ' + (data.message||''));
-    }).catch(e => addLog('ERROR', '保存简历失败: ' + e.message));
+  saveConfig().then(function() {
+    showToast('简历已保存', 'success');
+  }).catch(function(e) {
+    showToast('保存简历失败: ' + e.message, 'error');
+  });
 }
 
 function toggleTheme() {
@@ -891,15 +896,18 @@ function loadConfig() {
     if (!config.resume) config.resume = {};
     config.resume = Object.assign({school:'',major:'',degree:'',skills:[],experience:'',target_position:'',self_intro:''}, config.resume);
     if (!config.accounts || !config.accounts.length) {
-      config.accounts = [{name:'主账号',enabled:true,cookie_file:'zhipin_cookies.json',image_files:[],message_interval_min:3,message_interval_max:8,jobs:[{enabled:true,city:'上海',query:'数据分析',scroll_pages:5,greeting_message:defaultGreeting}]}];
+      config.accounts = [{name:'主账号',enabled:true,cookie_file:'zhipin_cookies.json',image_files:[],message_interval_min:3,message_interval_max:8,resume:{},jobs:[{enabled:true,city:'上海',query:'数据分析',scroll_pages:5,greeting_message:defaultGreeting}]}];
     }
     // 填充每个账号和岗位的默认值
-    config.accounts.forEach(function(acc) {
+    config.accounts.forEach(function(acc, i) {
       acc.enabled = acc.enabled !== false;
-      acc.cookie_file = acc.cookie_file || 'zhipin_cookies.json';
+      // 主账号保留原cookie，新账号默认为空
+      if (i === 0) acc.cookie_file = acc.cookie_file || 'zhipin_cookies.json';
+      else acc.cookie_file = acc.cookie_file || '';
       acc.image_files = acc.image_files || [];
       acc.message_interval_min = acc.message_interval_min ?? 3;
       acc.message_interval_max = acc.message_interval_max ?? 8;
+      acc.resume = acc.resume || {};
       (acc.jobs || []).forEach(function(job) {
         job.enabled = job.enabled !== false;
         job.city = job.city || '上海';
@@ -908,6 +916,11 @@ function loadConfig() {
         job.greeting_message = job.greeting_message || defaultGreeting;
       });
     });
+    // 全局resume兼容：如果存在全局resume，同步到第一个账号
+    if (config.resume && Object.keys(config.resume).length > 0 && config.accounts[0]) {
+      config.accounts[0].resume = config.resume;
+      delete config.resume;
+    }
     renderAccounts();
     renderAccountConfig();
     renderAdvSettings();
@@ -1039,7 +1052,7 @@ function renderAccountConfig() {
   if (!a) return;
   document.getElementById('accName').value = a.name||'主账号';
   document.getElementById('accEnabled').className = 'toggle-switch'+(a.enabled!==false?' on':'');
-  document.getElementById('accCookie').value = a.cookie_file||'zhipin_cookies.json';
+  document.getElementById('accCookie').value = a.cookie_file || '';
   var _m1 = document.getElementById('msgIntervalMin');
   if (_m1) _m1.value = (a.message_interval_min !== undefined && a.message_interval_min !== null) ? a.message_interval_min : 3;
   var _m2 = document.getElementById('msgIntervalMax');
@@ -1081,7 +1094,7 @@ function updateSbarJobs() {
   }
 }
 
-function switchAccount(i) { activeAccountIdx = i; renderAccounts(); renderAccountConfig(); renderJobs(); updateSbarJobs(); }
+function switchAccount(i) { activeAccountIdx = i; renderAccounts(); renderAccountConfig(); renderJobs(); updateSbarJobs(); loadPersistedStats(); }
 
 function onAccChange() {
   onAdvChange();
@@ -1285,8 +1298,8 @@ function deleteJob(i) {
 }
 
 function addAccount() {
-  const cookieFile = document.getElementById('accCookie').value || 'zhipin_cookies.json';
-  fetch('/api/config/accounts', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({cookie_file: cookieFile}) })
+  // 新账号默认 cookie 为空，不继承当前页面的 cookie 值
+  fetch('/api/config/accounts', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({cookie_file: ''}) })
     .then(r=>r.json())
     .then(data => {
       if (data.status === 'ok') {
@@ -1339,8 +1352,9 @@ function startAll() {
       // 稍微延迟确保状态已完全重置
       setTimeout(() => {
         if (socket && socket.connected) {
-          socket.emit('start_all');
-          showToast('投递任务已启动', 'success');
+          // 发送当前选中的账号索引，只运行该账号的任务
+          socket.emit('start_all', { account_idx: activeAccountIdx });
+          showToast('投递任务已启动（' + (config.accounts[activeAccountIdx]?.name || '当前账号') + '）', 'success');
         } else {
           showToast('WebSocket 未连接，请刷新页面重试', 'error');
           if (btn) { btn.disabled = false; btn.textContent = '▶ 启动'; btn.style.display = ''; }
@@ -1390,6 +1404,23 @@ function updateStats() {
   if(t) t.textContent=stats.total; if(a) a.textContent=stats.applied; if(s) s.textContent=stats.skipped;
 }
 
+function loadPersistedStats() {
+  // 从磁盘加载统计，只显示当前账号的累计数据
+  fetch('/api/stats').then(r=>r.json()).then(data=>{
+    if (data && data.stats) {
+      const acc = config.accounts[activeAccountIdx];
+      const accName = acc ? (acc.name || '当前账号') : '当前账号';
+      const accData = data.stats[accName];
+      if (accData) {
+        stats.total = accData.total || 0;
+        stats.applied = accData.applied || 0;
+        stats.skipped = accData.skipped || 0;
+        updateStats();
+      }
+    }
+  }).catch(()=>{});
+}
+
 function escHtml(t){const d=document.createElement('div');d.textContent=t;return d.innerHTML;}
 function escAttr(t){return (t||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
 function escJs(t){return encodeURIComponent(t||'').replace(/%2F/g,'/').replace(/%20/g,' ');}
@@ -1418,7 +1449,22 @@ function resetScheduler() {
     .catch(()=>{});
 }
 
-socket.on('connect',()=>{addLog('SYSTEM','WebSocket 已连接');document.getElementById('connStatus').textContent='已连接';resetScheduler();});
+socket.on('connect',()=>{
+  addLog('SYSTEM','WebSocket 已连接');
+  document.getElementById('connStatus').textContent='已连接';
+  // 检查后端是否正在运行，如果是则恢复状态而不是重置
+  fetch('/api/scheduler/status').then(r=>r.json()).then(data=>{
+    if (data.running) {
+      // 后端正在运行，恢复前端状态
+      setControls(true);
+      addLog('SYSTEM','检测到后台任务正在运行，已恢复连接');
+    } else {
+      setControls(false);
+    }
+  }).catch(()=>{setControls(false);});
+  // 加载磁盘上持久化的各账号累计统计
+  loadPersistedStats();
+});
 socket.on('disconnect',()=>{addLog('ERROR','WebSocket 断开');document.getElementById('connStatus').textContent='已断开';});
 socket.on('bot_log',(data)=>{if(data&&data.message) addLog('INFO',data.message);});
 socket.on('bot_progress',(data)=>{
@@ -1503,22 +1549,28 @@ function uploadCookieFile(event) {
 }
 
 function deleteCookieFile() {
-  const filename = document.getElementById("accCookie").value || "zhipin_cookies.json";
+  var acc = config.accounts[activeAccountIdx];
+  if (!acc) return;
+  var filename = document.getElementById("accCookie").value || acc.cookie_file || "";
+  if (!filename) {
+    showToast('当前账号没有 Cookie 文件', 'warning');
+    return;
+  }
   if (!confirm("确定删除 Cookie 文件 \"" + filename + "\" 吗？")) return;
   fetch("/api/cookies/delete", {
     method:"POST",
     headers:{"Content-Type":"application/json"},
     body:JSON.stringify({filename: filename})
-  }).then(r=>r.json()).then(data => {
+  }).then(r=>r.json()).then(function(data) {
     if (data.status === "ok") {
-      addLog("INFO", "已删除 Cookie 文件: " + filename);
-      config.accounts[activeAccountIdx].cookie_file = "";
+      showToast('已删除 Cookie 文件: ' + filename, 'success');
+      acc.cookie_file = "";
       renderAccountConfig();
       saveConfig();
     } else {
-      addLog("ERROR", "删除失败: " + (data.message||""));
+      showToast('删除失败: ' + (data.message || ''), 'error');
     }
-  }).catch(e => addLog("ERROR", "删除异常: " + e.message));
+  }).catch(function(e) { showToast('删除异常: ' + e.message, 'error'); });
 }
 
 /* ===== anime.js entrance animations ===== */
