@@ -4,14 +4,14 @@
     "applied": 0,
     "skipped": 0,
     "completed": 0,
-    "ended_at": "2026-08-28 17:56:57"
+    "ended_at": "2026-08-28 19:27:57"
   },
   "账号2": {
-    "total": 241,
-    "applied": 27,
+    "total": 202,
+    "applied": 9,
     "skipped": 0,
     "query": "AI漫剧",
     "city": "长沙",
-    "updated_at": "2026-08-28 18:15:23"
+    "updated_at": "2026-08-28 19:27:57"
   }
 }

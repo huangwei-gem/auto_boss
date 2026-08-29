@@ -258,11 +258,21 @@ class BotCore:
             self._log("ERROR", traceback.format_exc())
         finally:
             self.running = False
+            # 任务完成后不退出浏览器，保持登录状态持续运行
+            # 只有调用 quit_browser() 时才真正退出
             if self.dp:
-                try:
-                    self.dp.quit()
-                except Exception:
-                    pass
+                self._log("INFO", "任务完成，浏览器保持运行中")
+
+    def quit_browser(self):
+        """显式退出浏览器（用户点击停止时调用）。"""
+        self.running = False
+        if self.dp:
+            try:
+                self.dp.quit()
+                self.dp = None
+                self._log("INFO", "浏览器已退出")
+            except Exception:
+                pass
 
     def stop(self):
         self.running = False
@@ -561,14 +571,63 @@ class BotCore:
             self._log("WARN", traceback.format_exc())
             return False
 
+    def _clear_drissionpage_ext_cache(self):
+        """清除 DrissionPage configs.ini 中缓存的 browser_path 和 extensions。
+
+        DrissionPage 会把 browser_path 和 extensions 全局缓存到
+        %APPDATA%\Python\Python313\site-packages\DrissionPage\_configs\configs.ini
+        当项目移动或路径变化时，旧缓存会导致浏览器启动失败。
+        本方法在每次启动浏览器前清空这两个字段，让代码中的 set_browser_path()
+        和 --load-extension 参数生效。
+        """
+        try:
+            import configparser
+            # configs.ini 路径
+            drission_dir = os.path.dirname(os.path.abspath(DrissionPage.__file__))
+            configs_ini = os.path.join(drission_dir, "_configs", "configs.ini")
+            if not os.path.isfile(configs_ini):
+                return
+            cp = configparser.ConfigParser()
+            cp.read(configs_ini, encoding="utf-8")
+            changed = False
+            if cp.has_section("chromium_options"):
+                if cp.has_option("chromium_options", "browser_path"):
+                    cp.set("chromium_options", "browser_path", "")
+                    changed = True
+                if cp.has_option("chromium_options", "extensions"):
+                    cp.set("chromium_options", "extensions", "")
+                    changed = True
+            if changed:
+                with open(configs_ini, "w", encoding="utf-8") as f:
+                    cp.write(f)
+        except Exception:
+            pass
+
     def _init_browser(self) -> bool:
         """初始化浏览器。如果已经初始化则复用。"""
         try:
             if self.dp is not None:
                 return True  # 复用已有浏览器
+            # 清除 DrissionPage 缓存的扩展路径（避免旧路径导致启动失败）
+            self._clear_drissionpage_ext_cache()
             co = ChromiumOptions()
-            co.set_argument("--no-sandbox")
             co.set_argument("--disable-gpu")
+            # 使用项目根目录自带的浏览器
+            browser_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "cloakbrowser-windows-x64")
+            chrome_path = os.path.join(browser_dir, "chrome.exe")
+            if os.path.isfile(chrome_path):
+                co.set_browser_path(chrome_path)
+                self._log("INFO", f"使用自带浏览器: {chrome_path}")
+            # 加载 BrowserSkill 扩展（按优先级查找）
+            ext_dirs = [
+                os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "browser-skill-extension-v0.1.7-chrome"),
+                os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "browser-extension"),
+            ]
+            for ext_dir in ext_dirs:
+                if os.path.isdir(ext_dir):
+                    co.set_argument(f"--load-extension={ext_dir}")
+                    self._log("INFO", f"已加载浏览器扩展: {ext_dir}")
+                    break
             if self._headless:
                 co.set_argument("--headless=new")
             if self._custom_user_agent:
@@ -637,6 +696,8 @@ class BotCore:
         for i in range(self._scroll_pages):
             if not self.running:
                 break
+            # 保活：每次滚动前做轻量交互，防止 Chrome 冻结
+            self._keep_alive()
             try:
                 self.dp.scroll.to_bottom()
                 self._random_delay(1, 3)
@@ -1211,8 +1272,17 @@ class BotCore:
                         send_btn = self.dp.ele("text:发送", timeout=3)
                     if not send_btn:
                         send_btn = self.dp.ele("button[type=send]", timeout=3)
+                    if not send_btn:
+                        # JS 兜底：DrissionPage ele() 有时找不到动态渲染的按钮
+                        js_result = self.dp.run_js(
+                            "var b=document.querySelector('.btn-v2.btn-sure-v2.btn-send');"
+                            "if(b){b.click();'ok';}else{'fail';}"
+                        )
+                        if js_result == "ok":
+                            send_btn = True  # 标记为已点击
                     if send_btn:
-                        send_btn.click()
+                        if send_btn is not True:
+                            send_btn.click()
                         self._random_delay(1, 2)
                         self._log("INFO", "[v2] 已点击发送按钮，自定义消息已发送")
                     else:
@@ -1245,8 +1315,22 @@ class BotCore:
             self._log("INFO", "[v2] 消息已输入")
 
             # ── 6. 点击发送 ──
-            self.dp.ele(".send-message").click()
-            self._random_delay(1, 2)
+            send_btn_a = self.dp.ele(".send-message", timeout=5)
+            if not send_btn_a:
+                send_btn_a = self.dp.ele(".btn-v2.btn-sure-v2.btn-send", timeout=3)
+            if not send_btn_a:
+                js_click = self.dp.run_js(
+                    "var b=document.querySelector('.send-message')||document.querySelector('.btn-v2.btn-sure-v2.btn-send');"
+                    "if(b){b.click();'ok';}else{'fail';}"
+                )
+                if js_click == "ok":
+                    send_btn_a = True
+            if send_btn_a:
+                if send_btn_a is not True:
+                    send_btn_a.click()
+                self._random_delay(1, 2)
+            else:
+                self._log("WARN", "[v2] Flow A 未找到发送按钮")
 
             # 发送后检测页面是否断开
             try:
@@ -1446,6 +1530,11 @@ class BotCore:
             self.dp.scroll.up(1)
             time.sleep(0.1)
             self.dp.scroll.down(1)
+        except Exception:
+            pass
+        try:
+            # JS 兜底：触发 visibilitychange 和 mousemove 事件
+            self.dp.run_js("document.dispatchEvent(new Event('mousemove'));")
         except Exception:
             pass
 

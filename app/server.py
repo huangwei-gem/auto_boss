@@ -27,6 +27,7 @@ _scheduler_thread = None
 _scheduler_stop = threading.Event()
 _scheduler_run_id = 0
 _scheduler_running = False
+_scheduler_idle = False  # 任务完成但浏览器还开着（空闲状态）
 _bot = None
 _config = None
 
@@ -269,6 +270,7 @@ class TaskScheduler:
             self._current_runner = None
 
         self.log(f"[SCHEDULER] 全部完成！{completed_count}/{total_count} 个任务")
+        # 任务完成后显示就绪，但浏览器保持运行
         socketio.emit("scheduler_status", {
             "running": False,
             "total": total_count,
@@ -749,7 +751,7 @@ def api_delete_cookie():
 @socketio.on("connect")
 def on_connect():
     """新客户端连接时，发送磁盘上持久化的统计数据。"""
-    global _bot, _scheduler_running
+    global _bot, _scheduler_running, _scheduler_idle
     # 从磁盘加载所有账号的统计
     stats = _load_stats_from_disk()
     logger.info(f"[CONNECT] 加载到 stats: {list(stats.keys()) if stats else '空'}")
@@ -766,10 +768,13 @@ def on_connect():
             "total": progress["total"],
         })
         emit("scheduler_status", {"running": True})
+    elif _scheduler_idle:
+        # 任务完成但浏览器还开着，显示就绪状态
+        emit("scheduler_status", {"running": False, "idle": True})
 
 @socketio.on("start_all")
 def on_start_all(data=None):
-    global _scheduler_thread, _scheduler_stop, _bot, _scheduler_running, _config, _scheduler_run_id
+    global _scheduler_thread, _scheduler_stop, _bot, _scheduler_running, _config, _scheduler_run_id, _scheduler_idle
 
     sid = request.sid
 
@@ -797,6 +802,7 @@ def on_start_all(data=None):
             _scheduler_thread.join(timeout=10)
         _scheduler_thread = None
         _scheduler_running = False
+        _scheduler_idle = False
         _scheduler_stop.clear()
         time.sleep(1)
         logger.info("已停止旧调度器线程，重新启动")
@@ -834,7 +840,7 @@ def on_start_all(data=None):
     _bot = scheduler
 
     def _run_scheduler(run_id):
-        global _scheduler_running, _scheduler_thread
+        global _scheduler_running, _scheduler_thread, _scheduler_idle
         try:
             scheduler.run(sid)
         except Exception as e:
@@ -848,8 +854,8 @@ def on_start_all(data=None):
         finally:
             # Only clear running flag if this is still the current run
             if run_id == _scheduler_run_id:
-                _scheduler_running = False
                 _scheduler_thread = None
+                _scheduler_idle = True  # 任务完成，浏览器空闲但保持运行
                 # 保存最终统计到磁盘
                 if hasattr(scheduler, 'get_progress'):
                     progress = scheduler.get_progress()
@@ -873,8 +879,7 @@ def on_start_all(data=None):
                     except Exception:
                         pass
                 try:
-                    socketio.emit("bot_status", {"running": False}, to=sid)
-                    socketio.emit("scheduler_status", {"running": False}, to=sid)
+                    socketio.emit("bot_log", {"message": "[SYSTEM] 任务完成，浏览器保持运行中（点击停止退出）"}, to=sid)
                 except Exception:
                     pass
 
@@ -885,13 +890,18 @@ def on_start_all(data=None):
 
 @socketio.on("stop_all")
 def on_stop_all():
-    global _scheduler_stop, _scheduler_thread, _bot, _scheduler_running
+    global _scheduler_stop, _scheduler_thread, _bot, _scheduler_running, _scheduler_idle
     with _scheduler_lock:
         _scheduler_stop.set()
         _scheduler_running = False
+        _scheduler_idle = False
         if _bot:
             try:
-                _bot.stop()
+                # 停止调度器时退出浏览器
+                if hasattr(_bot, 'quit_browser'):
+                    _bot.quit_browser()
+                else:
+                    _bot.stop()
             except Exception:
                 pass
         if _scheduler_thread and _scheduler_thread.is_alive():

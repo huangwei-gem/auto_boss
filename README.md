@@ -1,15 +1,20 @@
 # Boss直聘自动投递
 
-基于 DrissionPage 的 Boss直聘自动投递工具，支持多岗位多账号、AI智能匹配、Web可视化管理。
+基于 DrissionPage 的 Boss直聘自动投递工具，**自带浏览器**，无需额外安装 Chrome。支持多岗位多账号、AI智能匹配、Web可视化管理、BrowserSkill 扩展集成。
 
 ## 功能特性
 
+- **自带浏览器**：内置 Chromium，无需安装 Chrome，解压即用
+- **BrowserSkill 集成**：加载 AI 浏览器扩展，支持 AI 定制化操作
 - 多岗位多账号自动投递
 - AI智能匹配分析（支持多AI容灾）
 - Web可视化管理界面（毛玻璃风格）
 - 岗位列表管理、高级设置
 - 图片作品集上传
 - 投递日志记录
+- **按账号分离统计**：每个账号独立显示总任务/已投递/已跳过
+- **浏览器保活**：防止 Chrome 冻结/丢弃标签页
+- **任务完成后浏览器保持运行**：无需重复登录
 
 ## 快速开始
 
@@ -61,11 +66,21 @@ boss-auto-apply/
 │   ├── templates/index.html      # Web 界面
 │   ├── static/                   # 静态资源
 │   └── data/                     # 运行时数据（已 gitignore）
+├── cloakbrowser-windows-x64/     # 自带 Chromium 浏览器
+├── browser-skill-extension-v0.1.7-chrome/  # BrowserSkill 扩展
 ├── venv/                         # 虚拟环境
 ├── requirements.txt              # Python 依赖
 ├── run.py                        # 入口脚本
 └── 启动.bat                       # 一键启动
 ```
+
+## 投递流程
+
+### 流程A（传统）
+点击「立即沟通」→ 出现输入框 → 输入打招呼语 → 点击发送 → 发送图片
+
+### 流程B（弹窗）
+点击「立即沟通」→ Boss 自动发默认消息 → 弹窗「留在此页/继续沟通」→ 点击「继续沟通」→ 进入完整聊天窗口 → 输入自定义打招呼语 → 发送
 
 ## 配置说明
 
