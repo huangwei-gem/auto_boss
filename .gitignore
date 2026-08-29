@@ -59,8 +59,3 @@ web_app/zhipin_cookies.json
 web_app/ai_cache.json
 web_app/*_cookies.json
 web_app/*.cookie.json
-
-# ── 便携浏览器和扩展（大文件，首次启动时下载） ──
-cloakbrowser-windows-x64/
-browser-extension/
-browser-skill-extension-v0.1.7-chrome/
