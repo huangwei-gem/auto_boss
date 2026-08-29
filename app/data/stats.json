@@ -13,5 +13,21 @@
     "query": "AI漫剧",
     "city": "长沙",
     "updated_at": "2026-08-28 19:27:57"
+  },
+  "默认": {
+    "total": 7,
+    "applied": 5,
+    "skipped": 2,
+    "query": "数据分析",
+    "city": "上海",
+    "updated_at": "2026-08-29 10:45:39"
+  },
+  "测试账号1": {
+    "total": 7,
+    "applied": 5,
+    "skipped": 2,
+    "query": "数据分析",
+    "city": "上海",
+    "updated_at": "2026-08-29 10:47:53"
   }
 }

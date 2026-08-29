@@ -615,9 +615,15 @@ class BotCore:
             # 使用项目根目录自带的浏览器
             browser_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "cloakbrowser-windows-x64")
             chrome_path = os.path.join(browser_dir, "chrome.exe")
-            if os.path.isfile(chrome_path):
-                co.set_browser_path(chrome_path)
-                self._log("INFO", f"使用自带浏览器: {chrome_path}")
+            if not os.path.isfile(chrome_path):
+                self._log("ERROR", f"便携浏览器不存在: {chrome_path}")
+                self._log("INFO", "请下载便携浏览器并解压到项目根目录:")
+                self._log("INFO", "  1. 下载 cloakbrowser-windows-x64.zip")
+                self._log("INFO", "  2. 解压到项目根目录，确保存在 cloakbrowser-windows-x64/chrome.exe")
+                self._log("INFO", "  3. 重新启动程序")
+                return False
+            co.set_browser_path(chrome_path)
+            self._log("INFO", f"使用自带浏览器: {chrome_path}")
             # 加载 BrowserSkill 扩展（按优先级查找）
             ext_dirs = [
                 os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "browser-skill-extension-v0.1.7-chrome"),

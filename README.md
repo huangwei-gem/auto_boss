@@ -31,7 +31,15 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-### 2. 启动
+### 2. 下载便携浏览器（首次使用）
+
+便携浏览器未包含在 Git 仓库中（体积约 500MB），需要单独下载：
+
+1. 下载 `cloakbrowser-windows-x64.zip`（请联系维护者或从 Release 页面下载）
+2. 解压到项目根目录，确保存在 `cloakbrowser-windows-x64/chrome.exe`
+3. （可选）下载 `browser-extension` 文件夹放到项目根目录，启用 BrowserSkill 扩展
+
+### 3. 启动
 
 ```bash
 # Windows：双击 启动.bat，或命令行
