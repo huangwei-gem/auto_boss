@@ -13,6 +13,14 @@
 
 ## 快速开始
 
+### 支持平台
+
+| 平台 | 状态 | 启动方式 |
+|------|------|----------|
+| Windows 10/11 | ✅ 支持 | 双击 `启动.bat` |
+| macOS 12+ (Intel/Apple Silicon) | ✅ 支持 | `./start.sh` |
+| Linux (Ubuntu/Debian) | ✅ 支持 | `./start.sh` |
+
 ### 1. 安装依赖
 
 ```bash
@@ -33,8 +41,8 @@ pip install -r requirements.txt
 venv\Scripts\python run.py
 
 # Mac/Linux
-source venv/bin/activate
-python run.py
+chmod +x start.sh
+./start.sh
 ```
 
 访问 http://127.0.0.1:5000
@@ -78,4 +86,20 @@ boss-auto-apply/
 ## 跨平台支持
 
 - **Windows**：双击 `启动.bat` 即可
-- **Mac/Linux**：终端运行 `source venv/bin/activate && python run.py`
+- **Mac/Linux**：终端运行 `./start.sh`
+
+### 系统要求
+
+- **Python**：3.8 或更高版本
+- **Chrome**：Google Chrome 90+ （必需）
+- **内存**：至少 4GB 可用内存
+- **网络**：能正常访问 Boss直聘
+
+### macOS 特别说明
+
+macOS 上使用独立的浏览器启动器（`browser_launcher.py`），解决了 DrissionPage 在 macOS 上的 WebSocket 连接兼容性问题。首次启动时会自动：
+1. 检测 Chrome 安装位置
+2. 启动 Chrome 并开启远程调试
+3. 通过 CDP 协议连接浏览器
+
+如果遇到 "Chrome not found" 错误，请确保已安装 Google Chrome。

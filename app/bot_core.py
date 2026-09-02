@@ -495,23 +495,21 @@ class BotCore:
             return False
 
     def _init_browser(self) -> bool:
-        """初始化浏览器。如果已经初始化则复用。"""
+        """初始化浏览器。如果已经初始化则复用。
+
+        使用跨平台启动器，解决 macOS 上 DrissionPage 的兼容性问题。
+        """
         try:
             if self.dp is not None:
                 return True  # 复用已有浏览器
-            co = ChromiumOptions()
-            co.set_argument("--no-sandbox")
-            co.set_argument("--disable-gpu")
-            if self._headless:
-                co.set_argument("--headless=new")
-            if self._custom_user_agent:
-                co.set_user_agent(self._custom_user_agent)
-            else:
-                co.set_user_agent(random.choice(FALLBACK_USER_AGENTS))
-            if self._proxy:
-                co.set_proxy(self._proxy)
-            co.set_timeouts(base=self._page_load_timeout)
-            self.dp = ChromiumPage(co)
+            from browser_launcher import launch_browser
+            self.dp = launch_browser(
+                headless=self._headless,
+                user_agent=self._custom_user_agent or random.choice(FALLBACK_USER_AGENTS),
+                proxy=self._proxy,
+                viewport_width=self._viewport_width,
+                viewport_height=self._viewport_height,
+            )
             self._log("INFO", "浏览器已启动")
             return True
         except Exception as e:
