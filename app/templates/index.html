@@ -387,6 +387,12 @@ a{color:var(--accent);text-decoration:none}
         </button>
         <div class="adv-section" id="advSection">
           <div class="adv-group-title">浏览器</div>
+          <div class="adv-field-row"><label>浏览器</label>
+            <select class="side-form-input" id="advBrowserType" onchange="onAdvChange()" style="flex:1;padding:4px 6px;border-radius:4px;border:1px solid var(--bd-2);background:var(--side-input-bg);color:var(--fg-2nd);font-size:12px">
+              <option value="chrome">Google Chrome</option>
+              <option value="edge">Microsoft Edge</option>
+            </select>
+          </div>
           <div class="adv-field-row"><label>无头</label><span id="advHeadless" class="toggle-switch" onclick="toggleAdvBool('headless')"></span></div>
           <div class="adv-field-row"><label>宽度</label><input class="side-form-input" id="advViewportW" type="number" placeholder="1280" onchange="onAdvChange()"></div>
           <div class="adv-field-row"><label>高度</label><input class="side-form-input" id="advViewportH" type="number" placeholder="800" onchange="onAdvChange()"></div>
@@ -853,7 +859,7 @@ function loadConfig() {
     if (!config.login) config.login = {};
     if (!config.rate_limit) config.rate_limit = {};
     if (!config.retry) config.retry = {};
-    config.browser = Object.assign({headless:false,viewport_width:1280,viewport_height:800,page_load_timeout:30,custom_user_agent:'',proxy:''}, config.browser);
+    config.browser = Object.assign({headless:false,viewport_width:1280,viewport_height:800,page_load_timeout:30,custom_user_agent:'',proxy:'',browser_type:'chrome'}, config.browser);
     config.login = Object.assign({wait_timeout:300,clear_cookies_on_failure:true}, config.login);
     config.rate_limit = Object.assign({enabled:true,max_per_hour:30,max_per_day:100}, config.rate_limit);
     config.retry = Object.assign({max_attempts:3,base_delay:2,backoff_factor:2}, config.retry);
@@ -917,6 +923,7 @@ function setPlh(id, v) { var e = document.getElementById(id); if (e) e.placehold
 function renderAdvSettings() {
   const b = config.browser || {};
   setEl('advHeadless', 'toggle-switch' + (b.headless ? ' on' : ''));
+  setVal('advBrowserType', b.browser_type || 'chrome');
   setVal('advViewportW', b.viewport_width ?? 1280);
   setVal('advViewportH', b.viewport_height ?? 800);
   setVal('advTimeout', b.page_load_timeout ?? 30);
@@ -974,6 +981,7 @@ function toggleAdvBool(key) {
 function onAdvChange() {
   if (!config.browser) config.browser = {};
   config.browser.headless = document.getElementById('advHeadless').classList.contains('on');
+  config.browser.browser_type = document.getElementById('advBrowserType').value || 'chrome';
   config.browser.viewport_width = parseInt(document.getElementById('advViewportW').value) || 1280;
   config.browser.viewport_height = parseInt(document.getElementById('advViewportH').value) || 800;
   config.browser.page_load_timeout = parseInt(document.getElementById('advTimeout').value) || 30;

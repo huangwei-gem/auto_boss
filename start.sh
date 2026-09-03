@@ -65,4 +65,18 @@ except Exception as e:
 echo "  ========================================"
 echo "  🚀 启动地址: http://127.0.0.1:5000"
 echo "  ========================================"
-python run.py
+python run.py &
+SERVER_PID=$!
+
+# Ctrl+C 时终止后台服务
+trap "kill $SERVER_PID 2>/dev/null; exit" INT TERM
+
+# 等待服务就绪
+sleep 2
+
+# 自动打开浏览器
+echo "  🌐 正在打开浏览器..."
+open "http://127.0.0.1:5000"
+
+# 等待服务端退出
+wait $SERVER_PID

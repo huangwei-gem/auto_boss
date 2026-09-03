@@ -48,6 +48,7 @@ DEFAULT_CONFIG = {
         "page_load_timeout": 30,
         "custom_user_agent": "",
         "proxy": "",
+        "browser_type": "chrome",
     },
     "login": {
         "wait_timeout": 300,

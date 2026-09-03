@@ -174,6 +174,7 @@ class BotCore:
         self._page_load_timeout = browser_cfg.get("page_load_timeout", 30)
         self._custom_user_agent = browser_cfg.get("custom_user_agent", "")
         self._proxy = browser_cfg.get("proxy", "")
+        self._browser_type = browser_cfg.get("browser_type", "chrome")
 
         login_cfg = self.config.get("login", {})
         self._login_wait_timeout = login_cfg.get("wait_timeout", 300)
@@ -509,6 +510,7 @@ class BotCore:
                 proxy=self._proxy,
                 viewport_width=self._viewport_width,
                 viewport_height=self._viewport_height,
+                browser_type=self._browser_type,
             )
             self._log("INFO", "浏览器已启动")
             return True

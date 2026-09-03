@@ -64,6 +64,41 @@ def _find_chrome_path() -> str:
     else:  # Linux
         for name in ('google-chrome', 'google-chrome-stable', 'chromium', 'chromium-browser'):
             path = shutil.which(name)
+    return ""
+
+
+def _find_edge_path() -> str:
+    """自动查找 Microsoft Edge 可执行文件路径（跨平台）"""
+    if _IS_MACOS:
+        mac_paths = [
+            '/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge',
+            '/Applications/Microsoft Edge Canary.app/Contents/MacOS/Microsoft Edge Canary',
+        ]
+        for p in mac_paths:
+            if os.path.isfile(p):
+                return p
+        path = shutil.which('microsoft-edge') or shutil.which('msedge')
+        if path:
+            return path
+
+    elif _IS_WINDOWS:
+        win_paths = [
+            r'C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe',
+            r'C:\Program Files\Microsoft\Edge\Application\msedge.exe',
+            os.path.expandvars(r'%LOCALAPPDATA%\Microsoft\Edge\Application\msedge.exe'),
+            os.path.expandvars(r'%PROGRAMFILES%\Microsoft\Edge\Application\msedge.exe'),
+            os.path.expandvars(r'%PROGRAMFILES(X86)%\Microsoft\Edge\Application\msedge.exe'),
+        ]
+        for p in win_paths:
+            if os.path.isfile(p):
+                return p
+        path = shutil.which('msedge') or shutil.which('msedge.exe')
+        if path:
+            return path
+
+    else:  # Linux
+        for name in ('microsoft-edge', 'microsoft-edge-stable', 'msedge'):
+            path = shutil.which(name)
             if path:
                 return path
 
@@ -216,6 +251,61 @@ class BrowserInstance:
         return None
 
 
+def _detect_default_browser() -> str:
+    """检测系统默认浏览器，返回 "chrome" 或 "edge" """
+    if _IS_MACOS:
+        try:
+            import subprocess, re
+            result = subprocess.run(
+                ['defaults', 'read', 'com.apple.LaunchServices/com.apple.launchservices.secure', 'LSHandlers'],
+                capture_output=True, text=True, timeout=5
+            )
+            output = result.stdout
+            blocks = output.split('}')
+            for i, block in enumerate(blocks):
+                if 'LSHandlerURLScheme = https' in block:
+                    for j in range(i, -1, -1):
+                        m = re.search(r'LSHandlerRoleAll = "([^"]+)"', blocks[j])
+                        if m:
+                            bundle = m.group(1).lower()
+                            if 'edge' in bundle:
+                                return "edge"
+                            break
+                    break
+        except Exception:
+            pass
+
+    elif _IS_WINDOWS:
+        try:
+            import subprocess, re
+            result = subprocess.run(
+                ['reg', 'query',
+                 r'HKCU\Software\Microsoft\Windows\Shell\Associations\UrlAssociations\http\UserChoice',
+                 '/v', 'ProgId'],
+                capture_output=True, text=True, timeout=5
+            )
+            prog_id = result.stdout.lower()
+            if 'edge' in prog_id:
+                return "edge"
+        except Exception:
+            pass
+
+    else:  # Linux
+        try:
+            import subprocess
+            result = subprocess.run(
+                ['xdg-settings', 'get', 'default-web-browser'],
+                capture_output=True, text=True, timeout=5
+            )
+            desktop = result.stdout.lower()
+            if 'edge' in desktop:
+                return "edge"
+        except Exception:
+            pass
+
+    return "chrome"
+
+
 def launch_browser(
     headless: bool = False,
     user_agent: str = "",
@@ -224,8 +314,9 @@ def launch_browser(
     viewport_height: int = 800,
     port: int = 0,
     chrome_path: str = "",
+    browser_type: str = "chrome",
 ) -> BrowserInstance:
-    """启动浏览器（跨平台）
+    """启动浏览器（跨平台，支持 Chrome 和 Edge）
 
     Args:
         headless: 是否无头模式
@@ -234,21 +325,40 @@ def launch_browser(
         viewport_width: 视口宽度
         viewport_height: 视口高度
         port: 调试端口（0 表示自动选择）
-        chrome_path: Chrome 路径（空则自动检测）
+        chrome_path: 浏览器路径（空则自动检测）
+        browser_type: 浏览器类型，"chrome" 或 "edge"
 
     Returns:
         BrowserInstance: 浏览器实例
     """
+    browser_type = (browser_type or "chrome").lower().strip()
+
+    # 自动检测默认浏览器，作为优先尝试
+    default_browser = _detect_default_browser()
+    if browser_type == "chrome" and default_browser == "edge":
+        # 用户没特别指定，但系统默认是 Edge → 优先 Edge
+        browser_type = "edge"
+
     if not chrome_path:
-        chrome_path = _find_chrome_path()
+        if browser_type == "edge":
+            chrome_path = _find_edge_path()
+        else:
+            chrome_path = _find_chrome_path()
 
     if not chrome_path or not os.path.isfile(chrome_path):
-        raise FileNotFoundError(
-            f"未找到 Chrome/Chromium。请安装 Google Chrome 或手动指定路径。\n"
-            f"当前平台: {platform.system()} {platform.machine()}"
-        )
+        # fallback: 如果指定类型找不到，尝试另一种
+        fallback = _find_edge_path() if browser_type == "chrome" else _find_chrome_path()
+        if fallback and os.path.isfile(fallback):
+            logger.warning(f"未找到 {browser_type}，自动切换到: {fallback}")
+            chrome_path = fallback
+            browser_type = "edge" if browser_type == "chrome" else "chrome"
+        else:
+            raise FileNotFoundError(
+                f"未找到 {browser_type} 浏览器。请安装 Google Chrome 或 Microsoft Edge，或手动指定路径。\n"
+                f"当前平台: {platform.system()} {platform.machine()}"
+            )
 
-    logger.info(f"Chrome 路径: {chrome_path}")
+    logger.info(f"浏览器路径 ({browser_type}): {chrome_path}")
 
     if _IS_MACOS:
         return _launch_macos(
