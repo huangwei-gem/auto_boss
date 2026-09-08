@@ -104,6 +104,11 @@ DEFAULT_CONFIG = {
                     "query": "数据分析",
                     "scroll_pages": 5,
                     "greeting_message": DEFAULT_GREETING,
+                    "image_files": [
+                        "dashboard/452a1b69_看板2.png",
+                        "dashboard/d258c537_看板3.png",
+                        "dashboard/d7ca4e20_看板1.png",
+                    ],
                 },
             ],
         }

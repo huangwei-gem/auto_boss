@@ -196,7 +196,16 @@ class BrowserInstance:
         return self._get_active().set
 
     def cookies(self, as_dict=False):
-        return self._get_active().cookies(as_dict=as_dict)
+        obj = self._get_active()
+        # DrissionPage >= 4.1 新版签名: cookies(all_domains=False, all_info=False)
+        try:
+            return obj.cookies(as_dict=as_dict)
+        except TypeError:
+            # 新版不支持 as_dict，手动转换
+            raw = obj.cookies()
+            if as_dict:
+                return {c.get('name', ''): c.get('value', '') for c in raw}
+            return raw
 
     @property
     def listen(self):
@@ -412,6 +421,9 @@ def _launch_macos(
         '--disable-dev-shm-usage',
         '--disable-extensions',
         '--disable-background-networking',
+        '--no-first-run',
+        '--no-default-browser-check',
+        '--disable-features=DnsOverHttps',
         f'--user-data-dir={user_data_dir}',
         '--remote-allow-origins=*',  # 允许所有来源（Chrome 111+ 需要）
         f'--window-size={viewport_width},{viewport_height}',
@@ -490,6 +502,9 @@ def _launch_windows(
     co.set_argument('--no-sandbox')
     co.set_argument('--disable-gpu')
     co.set_argument('--disable-dev-shm-usage')
+    co.set_argument('--no-first-run')
+    co.set_argument('--no-default-browser-check')
+    co.set_argument('--disable-features=DnsOverHttps')
     co.set_argument(f'--window-size={viewport_width},{viewport_height}')
 
     if headless:

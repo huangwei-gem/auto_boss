@@ -255,12 +255,25 @@ class BotCore:
                     self.dp.quit()
                 except Exception:
                     pass
+                self.dp = None
 
     def stop(self):
         self.running = False
+        if self.dp:
+            try:
+                self.dp.quit()
+            except Exception:
+                pass
+            self.dp = None
 
     def confirm_login(self) -> None:
         self._login_event.set()
+        # 确认登录后自动导航离开登录页，避免用户手动关闭
+        if self.dp:
+            try:
+                self.dp.get("https://www.zhipin.com")
+            except Exception:
+                pass
 
     def check_login_status(self) -> bool:
         if not self.dp:
@@ -481,7 +494,6 @@ class BotCore:
                 if self._login_required_cb:
                     self._login_required_cb()
                 self._log("INFO", "已打开登录页面，请在浏览器中完成登录")
-                # 给用户一些时间登录，不阻塞等待
                 self._log("INFO", "等待登录确认...")
                 if not self._wait_for_login():
                     self._log("ERROR", "登录超时")
@@ -491,8 +503,28 @@ class BotCore:
             return True
         except Exception as e:
             self._log("WARN", "登录检查异常: " + str(e))
-            import traceback
-            self._log("WARN", traceback.format_exc())
+            # 连接断开时尝试重连浏览器
+            if "断开" in str(e) or "disconnected" in str(e).lower():
+                self._log("INFO", "尝试重新连接浏览器...")
+                if self._reconnect_browser():
+                    self._log("INFO", "浏览器重连成功")
+                    return True
+                self._log("ERROR", "浏览器重连失败")
+                return False
+            return False
+
+    def _reconnect_browser(self) -> bool:
+        """浏览器断连后尝试重连。"""
+        try:
+            if self.dp:
+                try:
+                    self.dp.quit()
+                except Exception:
+                    pass
+            self.dp = None
+            return self._init_browser()
+        except Exception as e:
+            self._log("ERROR", f"重连失败: {e}")
             return False
 
     def _init_browser(self) -> bool:
@@ -502,7 +534,14 @@ class BotCore:
         """
         try:
             if self.dp is not None:
-                return True  # 复用已有浏览器
+                # 检查连接是否还活着
+                try:
+                    _ = self.dp.url
+                    return True  # 复用已有浏览器
+                except Exception:
+                    self._log("WARN", "浏览器连接已断开，重新启动...")
+                    self.dp = None
+
             from browser_launcher import launch_browser
             self.dp = launch_browser(
                 headless=self._headless,
@@ -1197,8 +1236,8 @@ class BotCore:
     def _upload_image(self, img_path):
         """
         上传单张图片。
-        严格参考源文件 mian.py：
-        dp.ele(".toolbar-btn-content icon btn-sendimg tooltip tooltip-top").click.to_upload(路径)
+        优先使用 set.upload_files() 直接设置文件路径（官方推荐，最稳定），
+        失败时再回退到其他方式。
         """
         if not os.path.isfile(img_path):
             self._log("WARN", f"上传图片文件不存在: {img_path}")
@@ -1206,22 +1245,31 @@ class BotCore:
 
         abs_path = os.path.abspath(img_path)
 
-        # 严格参考源文件：.toolbar-btn-content icon btn-sendimg tooltip tooltip-top
+        # 优先：官方推荐方式 set.upload_files()，不开原生对话框
         try:
-            btn = self.dp.ele(".toolbar-btn-content icon btn-sendimg tooltip tooltip-top", timeout=5)
-            if btn:
-                btn.click.to_upload(abs_path)
+            self.dp.set.upload_files(abs_path)
+            self.dp.wait.upload_paths_inputted()
+            self._random_delay(2, 3)
+            return True
+        except Exception:
+            pass
+
+        # 备选1：直接找 input[type=file] 设置路径
+        try:
+            file_input = self.dp.ele("tag:input@@type=file", timeout=3)
+            if file_input:
+                file_input.input(abs_path)
                 self._random_delay(2, 3)
                 return True
         except Exception:
             pass
 
-        # 备选：直接找 input[type=file]
+        # 备选2：click.to_upload() 方式
         try:
-            file_input = self.dp.ele("tag:input@@type=file", timeout=3)
-            if file_input:
-                file_input.input(abs_path)
-                self._random_delay(1, 2)
+            btn = self.dp.ele(".toolbar-btn-content icon btn-sendimg tooltip tooltip-top", timeout=5)
+            if btn:
+                btn.click.to_upload(abs_path)
+                self._random_delay(2, 3)
                 return True
         except Exception:
             pass

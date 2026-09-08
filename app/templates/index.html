@@ -1347,7 +1347,11 @@ function stopAll() {
 
 function confirmLogin() { socket.emit('confirm_login'); }
 function doConfirmLogin() {
-  document.getElementById('loginModal').classList.remove('active');
+  const modal = document.getElementById('loginModal');
+  if (modal) {
+    modal.style.display = 'none';
+    modal.classList.remove('active');
+  }
   socket.emit('confirm_login');
   addLog('SYSTEM', '已确认登录，继续执行...');
 }
