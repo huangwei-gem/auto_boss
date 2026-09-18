@@ -179,13 +179,18 @@ class AIAnalyzerChain:
             raise Exception(f"请求超时（{provider.timeout}s）")
 
         try:
-            content = data["choices"][0]["message"]["content"]
+            message = data["choices"][0]["message"]
+            # 优先使用 content，如果为空则尝试 reasoning_content（思考模型）
+            content = message.get("content", "") or message.get("reasoning_content", "")
             json_start = content.find("{")
             json_end = content.rfind("}") + 1
             if json_start >= 0 and json_end > json_start:
                 result = json.loads(content[json_start:json_end])
                 return result
             else:
+                # 如果 reasoning_content 也没 JSON，取整段作为 reason
+                if content:
+                    return {"score": 50, "is_match": True, "reason": content[:200]}
                 raise ValueError("响应中未找到 JSON")
         except (KeyError, IndexError, json.JSONDecodeError, ValueError) as e:
             self._log("WARN", f"解析 AI 响应失败: {e}")

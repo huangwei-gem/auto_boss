@@ -29,6 +29,15 @@ _IS_MACOS = platform.system().lower() == "darwin"
 _IS_WINDOWS = platform.system().lower() == "windows"
 
 
+def _get_portable_browser_path() -> str:
+    """获取项目内置便携浏览器的路径"""
+    project_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    portable_path = os.path.join(project_dir, "cloakbrowser-windows-x64", "chrome.exe")
+    if os.path.isfile(portable_path):
+        return portable_path
+    return ""
+
+
 def _find_chrome_path() -> str:
     """自动查找 Chrome/Chromium 可执行文件路径（跨平台）"""
     if _IS_MACOS:
@@ -47,6 +56,11 @@ def _find_chrome_path() -> str:
                 return path
 
     elif _IS_WINDOWS:
+        # 优先使用项目内置便携浏览器
+        portable = _get_portable_browser_path()
+        if portable:
+            return portable
+
         win_paths = [
             r'C:\Program Files\Google\Chrome\Application\chrome.exe',
             r'C:\Program Files (x86)\Google\Chrome\Application\chrome.exe',
@@ -260,6 +274,86 @@ class BrowserInstance:
         return None
 
 
+def detect_available_browsers() -> dict:
+    """检测系统上安装了哪些浏览器，返回 {名称: 路径}"""
+    found = {}
+
+    if _IS_MACOS:
+        checks = {
+            "chrome": '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+            "edge": '/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge',
+            "chromium": '/Applications/Chromium.app/Contents/MacOS/Chromium',
+        }
+        for name, path in checks.items():
+            if os.path.isfile(path):
+                found[name] = path
+        # 尝试 which 兜底
+        for name, cmd in (("chrome", "google-chrome"), ("edge", "microsoft-edge"), ("chromium", "chromium")):
+            if name not in found:
+                path = shutil.which(cmd)
+                if path:
+                    found[name] = path
+
+    elif _IS_WINDOWS:
+        # 优先检测项目内置便携浏览器
+        portable = _get_portable_browser_path()
+        if portable:
+            found["portable"] = portable
+
+        checks = {
+            "chrome": [
+                r'C:\Program Files\Google\Chrome\Application\chrome.exe',
+                r'C:\Program Files (x86)\Google\Chrome\Application\chrome.exe',
+                os.path.expandvars(r'%LOCALAPPDATA%\Google\Chrome\Application\chrome.exe'),
+            ],
+            "edge": [
+                r'C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe',
+                r'C:\Program Files\Microsoft\Edge\Application\msedge.exe',
+            ],
+            "chromium": [],
+        }
+        for name, paths in checks.items():
+            for p in paths:
+                if p and os.path.isfile(p):
+                    found[name] = p
+                    break
+        # which 兜底
+        if not found:
+            for name, cmd in (("chrome", "chrome"), ("edge", "msedge")):
+                p = shutil.which(cmd)
+                if p:
+                    found[name] = p
+
+    else:  # Linux
+        for name, cmds in (
+            ("chrome", ("google-chrome", "google-chrome-stable")),
+            ("edge", ("microsoft-edge", "microsoft-edge-stable")),
+            ("chromium", ("chromium", "chromium-browser")),
+        ):
+            for cmd in cmds:
+                path = shutil.which(cmd)
+                if path:
+                    found[name] = path
+                    break
+
+    return found
+
+
+# 用户手动选择的浏览器（运行时缓存）
+_preferred_browser: str = ""
+
+
+def set_preferred_browser(name: str):
+    """设置用户偏好的浏览器"""
+    global _preferred_browser
+    _preferred_browser = name.lower().strip() if name else ""
+
+
+def get_preferred_browser() -> str:
+    """获取用户偏好的浏览器"""
+    return _preferred_browser
+
+
 def _detect_default_browser() -> str:
     """检测系统默认浏览器，返回 "chrome" 或 "edge" """
     if _IS_MACOS:
@@ -315,6 +409,39 @@ def _detect_default_browser() -> str:
     return "chrome"
 
 
+def _find_best_browser_path(browser_type: str = "chrome") -> tuple:
+    """自动查找最佳浏览器路径
+
+    优先级：用户偏好 > 系统默认 > 配置指定 > 按优先级兜底
+
+    Returns:
+        (browser_path, browser_type) 元组，找不到返回 ("", "")
+    """
+    available = detect_available_browsers()
+    if not available:
+        return ("", "")
+
+    # 1. 用户手动选择的偏好浏览器
+    if _preferred_browser and _preferred_browser in available:
+        return (available[_preferred_browser], _preferred_browser)
+
+    # 2. 系统默认浏览器
+    default = _detect_default_browser()
+    if default in available:
+        return (available[default], default)
+
+    # 3. 配置指定的浏览器类型
+    if browser_type in available:
+        return (available[browser_type], browser_type)
+
+    # 4. 按优先级兜底: portable > chrome > edge > chromium
+    for key in ("portable", "chrome", "edge", "chromium"):
+        if key in available:
+            return (available[key], key)
+
+    return ("", "")
+
+
 def launch_browser(
     headless: bool = False,
     user_agent: str = "",
@@ -325,7 +452,7 @@ def launch_browser(
     chrome_path: str = "",
     browser_type: str = "chrome",
 ) -> BrowserInstance:
-    """启动浏览器（跨平台，支持 Chrome 和 Edge）
+    """启动浏览器（跨平台，支持 Chrome、Edge、Chromium）
 
     Args:
         headless: 是否无头模式
@@ -335,35 +462,26 @@ def launch_browser(
         viewport_height: 视口高度
         port: 调试端口（0 表示自动选择）
         chrome_path: 浏览器路径（空则自动检测）
-        browser_type: 浏览器类型，"chrome" 或 "edge"
+        browser_type: 浏览器类型，"chrome" / "edge" / "chromium"
 
     Returns:
         BrowserInstance: 浏览器实例
     """
     browser_type = (browser_type or "chrome").lower().strip()
 
-    # 自动检测默认浏览器，作为优先尝试
-    default_browser = _detect_default_browser()
-    if browser_type == "chrome" and default_browser == "edge":
-        # 用户没特别指定，但系统默认是 Edge → 优先 Edge
-        browser_type = "edge"
-
+    # 如果用户没有手动指定路径，自动查找最佳浏览器
     if not chrome_path:
-        if browser_type == "edge":
-            chrome_path = _find_edge_path()
-        else:
-            chrome_path = _find_chrome_path()
+        chrome_path, browser_type = _find_best_browser_path(browser_type)
 
     if not chrome_path or not os.path.isfile(chrome_path):
-        # fallback: 如果指定类型找不到，尝试另一种
-        fallback = _find_edge_path() if browser_type == "chrome" else _find_chrome_path()
-        if fallback and os.path.isfile(fallback):
-            logger.warning(f"未找到 {browser_type}，自动切换到: {fallback}")
-            chrome_path = fallback
-            browser_type = "edge" if browser_type == "chrome" else "chrome"
+        # fallback: 尝试任何可用的浏览器
+        available = detect_available_browsers()
+        if available:
+            browser_type, chrome_path = next(iter(available.items()))
+            logger.warning(f"指定浏览器不可用，自动切换到: {browser_type} ({chrome_path})")
         else:
             raise FileNotFoundError(
-                f"未找到 {browser_type} 浏览器。请安装 Google Chrome 或 Microsoft Edge，或手动指定路径。\n"
+                f"未找到任何浏览器。请安装 Google Chrome 或 Microsoft Edge。\n"
                 f"当前平台: {platform.system()} {platform.machine()}"
             )
 

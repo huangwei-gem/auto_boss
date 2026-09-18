@@ -213,12 +213,24 @@ class BotCore:
         self._cookie_file = self.config.get("cookie_file", "zhipin_cookies.json")
 
     def _log(self, level: str, msg: str):
-        """统一日志输出。"""
+        """统一日志输出 — Socket.IO + 文件 + 结构化日志"""
         if self.log_cb:
             self.log_cb(f"[{level}] {msg}")
         # 同时写入文件日志
         try:
             _file_logger.info(f"[{self.account_name}] [{level}] {msg}")
+        except Exception:
+            pass
+        # 写入结构化日志（用于 API 检索）
+        try:
+            from logging_system import log_mgr, CATEGORY_BOT, CATEGORY_AI, CATEGORY_BROWSER
+            # 根据消息内容判断类别
+            category = CATEGORY_BOT
+            if "[AI]" in msg or "AI 匹配" in msg or "AI 分析" in msg:
+                category = CATEGORY_AI
+            elif "浏览器" in msg or "Chrome" in msg or "Chromium" in msg:
+                category = CATEGORY_BROWSER
+            log_mgr.log(category, level, msg)
         except Exception:
             pass
 

@@ -15,6 +15,7 @@ os.chdir(BASE_DIR)
 
 from config import load_config, save_config, validate_config, flatten_jobs_for_run, DEFAULT_GREETING
 from bot_core import BotCore
+from logging_system import log_mgr, CATEGORY_SYSTEM, CATEGORY_BOT, CATEGORY_AI, CATEGORY_BROWSER, CATEGORY_SCHEDULER
 
 app = Flask(__name__, template_folder="templates", static_folder="static")
 app.config["SECRET_KEY"] = os.urandom(24).hex()
@@ -641,6 +642,72 @@ def api_delete_cookie():
         os.remove(filepath)
         return jsonify({"status": "ok"})
     return jsonify({"status": "error", "message": "文件不存在"}), 404
+
+# ── 浏览器管理 ──
+
+@app.route("/api/browser/list", methods=["GET"])
+def api_browser_list():
+    """获取系统可用的浏览器列表和当前偏好设置。"""
+    from browser_launcher import detect_available_browsers, get_preferred_browser
+    available = detect_available_browsers()
+    return jsonify({
+        "status": "ok",
+        "available": available,
+        "preferred": get_preferred_browser(),
+    })
+
+
+@app.route("/api/browser/set", methods=["POST"])
+def api_browser_set():
+    """设置用户偏好的浏览器。"""
+    from browser_launcher import set_preferred_browser
+    data = request.get_json() or {}
+    browser_name = data.get("browser", "")
+    if not browser_name:
+        return jsonify({"status": "error", "message": "browser 参数不能为空"}), 400
+    set_preferred_browser(browser_name)
+    return jsonify({"status": "ok", "message": f"已设置偏好浏览器: {browser_name}"})
+
+
+# ── 日志查询 ──
+
+@app.route("/api/logs", methods=["GET"])
+def api_logs():
+    """检索日志。
+
+    参数:
+        category: 类别过滤 (SYSTEM/BOT/AI/BROWSER/SCHEDULER)
+        level: 级别过滤 (DEBUG/INFO/WARN/ERROR/SUCCESS)
+        search: 关键词搜索
+        limit: 返回数量 (默认100)
+        offset: 偏移量 (默认0)
+    """
+    result = log_mgr.query_logs(
+        category=request.args.get("category"),
+        level=request.args.get("level"),
+        search=request.args.get("search"),
+        limit=int(request.args.get("limit", 100)),
+        offset=int(request.args.get("offset", 0)),
+    )
+    return jsonify({"status": "ok", **result})
+
+
+@app.route("/api/logs/errors", methods=["GET"])
+def api_logs_errors():
+    """获取错误摘要。"""
+    hours = int(request.args.get("hours", 24))
+    result = log_mgr.get_error_summary(hours=hours)
+    return jsonify({"status": "ok", **result})
+
+
+@app.route("/api/logs/clear", methods=["POST"])
+def api_logs_clear():
+    """清理旧日志。"""
+    data = request.get_json() or {}
+    days = data.get("days", 7)
+    removed = log_mgr.clear_old_logs(days=days)
+    return jsonify({"status": "ok", "removed": removed})
+
 
 # ── SocketIO ──
 
