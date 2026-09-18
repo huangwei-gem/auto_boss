@@ -5,7 +5,9 @@
 ## 功能特性
 
 - 多岗位多账号自动投递
-- AI智能匹配分析（支持多AI容灾）
+- AI智能匹配分析（支持多AI容灾：Agnes + SenseNova GLM-5.2 + DeepSeek）
+- 多浏览器支持（便携浏览器/Chrome/Edge，自动检测）
+- 结构化日志系统（分类查询、错误摘要）
 - Web可视化管理界面（毛玻璃风格）
 - 岗位列表管理、高级设置
 - 图片作品集上传
@@ -55,24 +57,77 @@ chmod +x start.sh
    - **AI API Key**：填入你的 Agnes 或其他兼容 API Key
    - **岗位配置**：设置搜索关键词、城市、打招呼语等
    - **简历信息**：填写学校、专业、技能等（用于 AI 匹配分析）
-3. 参考 `app/data/bot_config.example.json` 了解配置格式
 
 ## 项目结构
 
 ```
-boss-auto-apply/
+auto_boss/
 ├── app/                          # Flask 应用主包
 │   ├── server.py                 # 路由 + SocketIO
 │   ├── config.py                 # 配置管理
 │   ├── bot_core.py               # 自动投递核心逻辑
-│   ├── ai_analyzer.py            # AI 岗位匹配分析
+│   ├── ai_analyzer.py            # AI 岗位匹配分析（单接口）
+│   ├── ai_analyzer_chain.py      # AI 容灾链（多接口自动切换）
+│   ├── browser_launcher.py       # 多浏览器启动器
+│   ├── logging_system.py         # 结构化日志系统
 │   ├── templates/index.html      # Web 界面
 │   ├── static/                   # 静态资源
-│   └── data/                     # 运行时数据（已 gitignore）
+│   └── data/                     # 运行时数据
+│       ├── logs/                 # 日志文件
+│       └── bot_config.json       # 配置（自动生成）
+├── cloakbrowser-windows-x64/     # 便携浏览器（可选）
 ├── venv/                         # 虚拟环境
 ├── requirements.txt              # Python 依赖
 ├── run.py                        # 入口脚本
 └── 启动.bat                       # 一键启动
+```
+
+## AI 多接口容灾
+
+系统支持多个 AI 接口，按优先级自动切换：
+
+| 优先级 | 名称 | 模型 | 接口地址 |
+|--------|------|------|----------|
+| 1 | Agnes-2.5-Flash | agnes-2.5-flash | https://apihub.agnes-ai.com/v1 |
+| 2 | SenseNova-GLM-5.2 | glm-5.2 | https://token.sensenova.cn/v1 |
+| 3 | SenseNova-DeepSeek | deepseek-v4-flash | https://token.sensenova.cn/v1 |
+
+当主接口失败时，自动切换到下一个接口。
+
+## 多浏览器支持
+
+Windows 下自动检测以下浏览器，按优先级使用：
+
+1. **便携浏览器**（`cloakbrowser-windows-x64/chrome.exe`）— 无需安装，开箱即用
+2. **Google Chrome** — 系统安装版本
+3. **Microsoft Edge** — 系统安装版本
+
+可通过 Web API 切换偏好浏览器：
+
+```bash
+# 查看可用浏览器
+curl http://127.0.0.1:5000/api/browser/list
+
+# 设置偏好浏览器
+curl -X POST http://127.0.0.1:5000/api/browser/set \
+  -H "Content-Type: application/json" \
+  -d '{"browser":"portable"}'
+```
+
+## 日志查询 API
+
+```bash
+# 查看所有日志
+curl "http://127.0.0.1:5000/api/logs?limit=50"
+
+# 只看错误
+curl "http://127.0.0.1:5000/api/logs/errors?hours=24"
+
+# 按类别查询（BOT/AI/BROWSER/SCHEDULER）
+curl "http://127.0.0.1:5000/api/logs?category=AI&limit=20"
+
+# 关键词搜索
+curl "http://127.0.0.1:5000/api/logs?search=匹配度"
 ```
 
 ## 配置说明
@@ -91,7 +146,7 @@ boss-auto-apply/
 ### 系统要求
 
 - **Python**：3.8 或更高版本
-- **Chrome**：Google Chrome 90+ （必需）
+- **Chrome**：Google Chrome 90+ 或便携浏览器
 - **内存**：至少 4GB 可用内存
 - **网络**：能正常访问 Boss直聘
 
